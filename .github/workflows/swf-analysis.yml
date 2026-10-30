@@ -156,6 +156,30 @@ jobs:
               raise SystemExit("Display-depth timeline accounting mismatch")
           PY
 
+      - name: Audit declared versus observed ShowFrame counts (metadata only)
+        run: |
+          python3 tools/build_frame_count_audit.py \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --depth build/swf-analysis/display-depth-evidence.json \
+            --output build/swf-analysis/frame-count-audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          d = json.loads((root / "display-depth-evidence.json").read_text(encoding="utf-8"))
+          a = json.loads((root / "frame-count-audit.json").read_text(encoding="utf-8"))
+          if a["source_sha256"] != d["source_sha256"]:
+              raise SystemExit("Frame audit SWF provenance mismatch")
+          if a["timeline_count"] != d["timeline_count"] or a["show_frame_count"] != d["show_frame_count"]:
+              raise SystemExit("Frame audit total accounting mismatch")
+          if a["mismatch_count"] != d["frame_count_mismatch_timelines"]:
+              raise SystemExit("Frame audit mismatch count disagrees with depth evidence")
+          if sum(a["mismatch_direction_counts"].values()) != a["mismatch_count"]:
+              raise SystemExit("Frame audit direction accounting mismatch")
+          if sum(a["delta_histogram"].values()) != a["mismatch_count"]:
+              raise SystemExit("Frame audit delta accounting mismatch")
+          PY
+
       - name: Validate unknown tag 253/255 headers and produce metadata-only evidence
         run: |
           python3 tools/build_unknown_tag_evidence.py \
