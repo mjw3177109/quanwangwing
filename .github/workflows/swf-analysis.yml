@@ -60,6 +60,9 @@ jobs:
       - name: Analyze original SWF with FFDec (bounded)
         run: python3 tools/analyze_swf.py --phase inventory --timeout 90 --output build/swf-analysis
 
+      - name: Build traceable asset and character index
+        run: python3 tools/build_asset_index.py --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/asset-index.json
+
       - name: Run expensive AS1/AS2 and link diagnostics (manual)
         if: github.event_name == 'workflow_dispatch' && inputs.phase == 'deep'
         run: python3 tools/analyze_swf.py --phase deep --timeout 120 --output build/swf-analysis
