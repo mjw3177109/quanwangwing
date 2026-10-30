@@ -2,7 +2,7 @@ name: SWF analysis and HTML5 checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feature/**"]
     paths:
       - "拳皇wing1.4.swf"
       - "FFDec/**"
