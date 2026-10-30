@@ -16,9 +16,9 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: "inventory (default) or assets (local-only export, not published)"
+        description: "inventory (default), scripts, or assets (local-only export)"
         type: choice
-        options: [inventory, assets]
+        options: [inventory, scripts, assets]
         default: inventory
 
 permissions:
@@ -59,6 +59,10 @@ jobs:
 
       - name: Analyze original SWF with FFDec (bounded)
         run: python3 tools/analyze_swf.py --phase inventory --timeout 90 --output build/swf-analysis
+
+      - name: Export ActionScript sources (manual, not published)
+        if: github.event_name == 'workflow_dispatch' && inputs.phase == 'scripts'
+        run: python3 tools/analyze_swf.py --phase scripts --timeout 120 --output build/swf-analysis
 
       - name: Export additional original assets (manual, not published)
         if: github.event_name == 'workflow_dispatch' && inputs.phase == 'assets'
