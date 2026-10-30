@@ -111,6 +111,29 @@ jobs:
               raise SystemExit("Script entry accounting mismatch")
           PY
 
+      - name: Cross-reference original StartSound and script containers by timeline/frame
+        run: |
+          python3 tools/build_sound_script_crosswalk.py \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --sound build/swf-analysis/sound-evidence.json \
+            --scripts build/swf-analysis/script-entry-evidence.json \
+            --output build/swf-analysis/sound-script-crosswalk.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          m = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          s = json.loads((root / "sound-script-crosswalk.json").read_text(encoding="utf-8"))
+          if s["source_sha256"] != m["source"]["sha256"]:
+              raise SystemExit("Crosswalk SWF provenance mismatch")
+          if s["start_sound_count"] != m["tag_counts_by_code"].get("15", 0):
+              raise SystemExit("Crosswalk StartSound count mismatch")
+          if s["sound_events_with_same_frame_scripts"] + s["sound_events_without_same_frame_scripts"] != s["start_sound_count"]:
+              raise SystemExit("Crosswalk co-location accounting mismatch")
+          if sum(e["same_frame_script_container_count"] for e in s["events"]) != s["same_frame_sound_script_pairs"]:
+              raise SystemExit("Crosswalk pair accounting mismatch")
+          PY
+
       - name: Validate unknown tag 253/255 headers and produce metadata-only evidence
         run: |
           python3 tools/build_unknown_tag_evidence.py \
