@@ -260,6 +260,12 @@ jobs:
               raise SystemExit("Identifier occurrence accounting mismatch")
           if any(t["occurrence_count"] < 1 or t["runtime_binding_verified"] for t in d["targets"]):
               raise SystemExit("Unverified identifier reference incorrectly classified")
+          if any(sum(t["scope_context_counts"].values()) != t["occurrence_count"]
+                 for t in d["targets"]):
+              raise SystemExit("AS2 lexical scope context accounting mismatch")
+          if any(e["scope_candidate"] and e["scope_candidate"]["runtime_binding_verified"]
+                 for t in d["targets"] for e in t["examples"]):
+              raise SystemExit("Unverified lexical scope classified as runtime binding")
           PY
 
       - name: Report bounded error metadata only

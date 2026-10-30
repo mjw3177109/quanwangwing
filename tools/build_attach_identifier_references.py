@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 
 from build_as2_semantic_index import mask_comments_strings
+from as2_reference_scopes import lexical_function_scopes, scope_context
 
 TOKEN = re.compile(r"(?<![\w$])([A-Za-z_$][\w$]*)(?![\w$])")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -72,6 +73,7 @@ def build_identifier_references(scripts_root: Path, export_index: dict,
 
     counters = {digest: Counter() for digest in sites}
     kinds = {digest: Counter() for digest in sites}
+    contexts = {digest: Counter() for digest in sites}
     same_examples = {digest: [] for digest in sites}
     other_examples = {digest: [] for digest in sites}
     checked_bytes = 0
@@ -96,6 +98,7 @@ def build_identifier_references(scripts_root: Path, export_index: dict,
             continue
         masked = mask_comments_strings(raw.decode("utf-8", errors="replace"))
         newlines = [i for i, char in enumerate(masked) if char == "\n"]
+        scopes = None  # Parse only scripts containing a target identifier.
         for match in TOKEN.finditer(masked):
             name = match.group(1)
             if name not in cache:
@@ -105,6 +108,9 @@ def build_identifier_references(scripts_root: Path, export_index: dict,
                 continue
             line = bisect_right(newlines, match.start() - 1) + 1
             kind = _kind(masked, match.start(), match.end())
+            if scopes is None:
+                scopes = lexical_function_scopes(masked)
+            context = scope_context(masked, scopes, match.start(), match.end())
             same_sites = [s for s in sites[digest] if s["script_path"] == rel]
             is_before = any(line < s["line"] for s in same_sites)
             counts = counters[digest]
@@ -113,8 +119,9 @@ def build_identifier_references(scripts_root: Path, export_index: dict,
                       "same_script_at_or_after" if same_sites else "other_script")
             counts[bucket] += 1
             kinds[digest][kind] += 1
+            contexts[digest][context["context"]] += 1
             example = {"script_path": rel, "line": line, "kind": kind,
-                       "relation": bucket}
+                       "relation": bucket, **context}
             dest = same_examples[digest] if same_sites else other_examples[digest]
             if len(dest) < EXAMPLE_LIMIT:
                 dest.append(example)
@@ -136,6 +143,7 @@ def build_identifier_references(scripts_root: Path, export_index: dict,
             "same_script_at_or_after_count": count["same_script_at_or_after"],
             "other_script_count": count["other_script"],
             "syntax_counts": dict(sorted(kinds[digest].items())),
+            "scope_context_counts": dict(sorted(contexts[digest].items())),
             "examples": (same_examples[digest] + other_examples[digest])[:EXAMPLE_LIMIT],
             "examples_truncated": count["total"] > EXAMPLE_LIMIT,
             "runtime_binding_verified": False,
@@ -150,6 +158,7 @@ def build_identifier_references(scripts_root: Path, export_index: dict,
         "limitations": [
             "Identifiers are compared by SHA-256 over lexically masked AS2 tokens, not resolved bindings.",
             "Prior text, declarations and assignment syntax do not prove control flow or variable scope.",
+            "Function signatures and body ranges are lexical candidates; malformed exports, regex literals and shadowing may affect scope classification.",
             "Examples are bounded and may omit references; aggregate counts include all matches.",
             "No ActionScript bodies, unmatched strings, original image or audio bytes are emitted.",
         ],
