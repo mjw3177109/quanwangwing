@@ -67,3 +67,18 @@ class Kyo_role extends RoleBase {
             assets["source_sha256"] = "a"
             with self.assertRaisesRegex(ValueError, "Invalid script relative path"):
                 build_index(Path(directory), export, assets)
+
+    def test_partial_critical_role_script_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "__Packages" / "role_corn" / "Role.as"
+            path.parent.mkdir(parents=True)
+            raw = b"x" * 144
+            path.write_bytes(raw)
+            export = {"source_sha256": "a", "script_count": 1,
+                      "files": [{"path": "scripts/__Packages/role_corn/Role.as",
+                                 "size_bytes": len(raw),
+                                 "sha256": hashlib.sha256(raw).hexdigest()}]}
+            assets = {"source_sha256": "a", "character_class_candidates": []}
+            with self.assertRaisesRegex(ValueError, "unexpectedly short"):
+                build_index(root, export, assets)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from bisect import bisect_right
 import hashlib
 import json
 from pathlib import Path
@@ -93,7 +94,8 @@ def mask_comments_strings(source: str) -> str:
 
 def inspect_source(raw: bytes) -> dict:
     masked = mask_comments_strings(raw.decode("utf-8", errors="replace"))
-    line = lambda offset: masked.count("\n", 0, offset) + 1
+    newlines = [i for i, char in enumerate(masked) if char == "\n"]
+    line = lambda offset: bisect_right(newlines, offset - 1) + 1
     return {
         "declared_classes": [
             {"name": m.group(1), "line": line(m.start())} for m in CLASS.finditer(masked)
@@ -126,6 +128,9 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
         if c.get("type2_role_character_id" if prefix else "base_role_character_id") is not None
     }
     indexed_paths = {r["path"] for r in records}
+    critical = "scripts/__Packages/role_corn/Role.as"
+    if len(records) >= 7000 and critical not in indexed_paths:
+        raise ValueError("Critical Role.as script missing from original AS2 export")
     role_map = [
         {
             "character_candidate": character,
@@ -147,6 +152,8 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
         raw = path.read_bytes()
         if len(raw) != record["size_bytes"] or hashlib.sha256(raw).hexdigest() != record["sha256"]:
             raise ValueError("Export hash/length mismatch: " + rel)
+        if rel == "scripts/__Packages/role_corn/Role.as" and len(raw) < 100000:
+            raise ValueError("Critical Role.as export is unexpectedly short; likely partial FFDec output")
         is_role = rel in expected_roles
         is_system = rel.startswith("scripts/__Packages/") and SYSTEM_NAME.search(Path(rel).stem) is not None
         is_frame = "/frame_" in rel and len(raw) >= 32768
