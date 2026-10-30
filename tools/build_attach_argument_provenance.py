@@ -143,12 +143,12 @@ def _assignment_candidates(
 
 
 def _concat_components(
-    raw: str, masked: str, source: str, before: int,
+    raw: str, masked_arg: str, source: str, masked_source: str, before: int,
     scope_start: int | None, line_breaks: list[int],
     names: dict[str, set[int]],
 ) -> list[dict]:
     """Describe syntax and lexical assignment hints without leaking source."""
-    parts = _split_concat(raw, masked)
+    parts = _split_concat(raw, masked_arg)
     if parts is None:
         return []
     result = []
@@ -173,7 +173,7 @@ def _concat_components(
             kind = "identifier"
             identifier_sha = _hash(masked_piece)
             assignments = _assignment_candidates(
-                source, masked, masked_piece, before,
+                source, masked_source, masked_piece, before,
                 scope_start, line_breaks, names,
             )
         elif MEMBER.fullmatch(masked_piece):
@@ -275,7 +275,7 @@ def build_dynamic_argument_evidence(
             )
             component_evidence = (
                 _concat_components(
-                    raw_arg, masked_arg, source, match.start(),
+                    raw_arg, masked_arg, source, masked, match.start(),
                     scope_start, line_breaks, names,
                 ) if shape == "concatenation" else []
             )
