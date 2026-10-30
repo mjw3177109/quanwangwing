@@ -68,6 +68,29 @@ jobs:
       - name: Build timeline placement, script, sound and frame-label reference map
         run: python3 tools/build_timeline_index.py --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/timeline-index.json
 
+      - name: Audit original sound definitions, triggers and stream structure
+        run: |
+          python3 tools/build_sound_evidence.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --output build/swf-analysis/sound-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          manifest = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          evidence = json.loads((root / "sound-evidence.json").read_text(encoding="utf-8"))
+          if evidence["source_sha256"] != manifest["source"]["sha256"]:
+              raise SystemExit("Sound evidence source mismatch")
+          for code in (14, 15, 17, 18, 19, 45, 89):
+              if evidence["sound_tag_counts"].get(str(code), 0) != manifest["tag_counts_by_code"].get(str(code), 0):
+                  raise SystemExit(f"Sound tag {code} accounting mismatch")
+          if evidence["define_sound_count"] != evidence["sound_tag_counts"].get("14", 0):
+              raise SystemExit("Sound definition accounting mismatch")
+          if evidence["start_sound_count"] != evidence["sound_tag_counts"].get("15", 0):
+              raise SystemExit("StartSound accounting mismatch")
+          PY
+
       - name: Audit script tag containers and original entry frames
         run: |
           python3 tools/build_script_entry_evidence.py \
