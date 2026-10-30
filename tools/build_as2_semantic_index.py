@@ -18,8 +18,8 @@ FUNCTION = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(")
 # AS2 often declares methods as prototype/function-expression assignments rather
 # than "function name(...)". Keep these as lexical evidence only.
 ASSIGNED_FUNCTION = re.compile(
-    r"(?<![\\w$])(?P<target>[A-Za-z_$][\\w$]*(?:\\s*\\.\\s*[A-Za-z_$][\\w$]*){0,12})"
-    r"\\s*=\\s*function\\s*(?:[A-Za-z_$][\\w$]*\\s*)?\\("
+    r"(?<![\w$])(?P<target>[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*){0,12})"
+    r"\s*=\s*function\s*(?:[A-Za-z_$][\w$]*\s*)?\("
 )
 CALLBACK_NAMES = frozenset({
     "onEnterFrame", "onLoad", "onKeyDown", "onKeyUp", "onPress", "onRelease",
@@ -109,7 +109,7 @@ def inspect_source(raw: bytes) -> dict:
     line = lambda offset: bisect_right(newlines, offset - 1) + 1
     assigned = []
     for match in ASSIGNED_FUNCTION.finditer(masked):
-        target = re.sub(r"\\s*\\.\\s*", ".", match.group("target"))
+        target = re.sub(r"\s*\.\s*", ".", match.group("target"))
         kind = (
             "prototype_method" if ".prototype." in target
             else "event_callback" if target.rsplit(".", 1)[-1] in CALLBACK_NAMES
