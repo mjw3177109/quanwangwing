@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090b12">
+  <title>拳皇 Wing 1.4 — HTML5 重构预览</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">W</span>
+        <div>
+          <p class="eyebrow">HTML5 REBUILD / FOUNDATION</p>
+          <h1>拳皇 Wing 1.4</h1>
+        </div>
+      </div>
+      <span class="status"><i></i> ENGINE PREVIEW</span>
+    </header>
+
+    <section class="stage-wrap" aria-label="游戏预览舞台">
+      <canvas id="game" width="960" height="540" aria-label="格斗引擎预览画布"></canvas>
+      <div class="stage-caption">
+        <span>原始 SWF → FFDec → HTML5 Canvas</span>
+        <span id="frame-counter">FRAME 000000</span>
+      </div>
+    </section>
+
+    <section class="info-grid">
+      <article class="panel">
+        <p class="eyebrow">CURRENT MILESTONE</p>
+        <h2>战斗运行时基础</h2>
+        <p>固定帧时钟、键盘输入缓冲、数据驱动招式窗口与基础命中判定已建立。当前画面为测试占位，不是原版角色素材。</p>
+      </article>
+      <article class="panel controls">
+        <p class="eyebrow">PLAYER 1</p>
+        <div><kbd>A</kbd><kbd>D</kbd><span>移动</span></div>
+        <div><kbd>W</kbd><kbd>S</kbd><span>跳跃 / 蹲下（预览）</span></div>
+        <div><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd><span>轻 / 重 / 特殊攻击</span></div>
+      </article>
+      <article class="panel">
+        <p class="eyebrow">NEXT DATA IMPORT</p>
+        <h2>等待 SWF 分析报告</h2>
+        <p>角色、动作帧、招式参数、碰撞箱和音频触发点必须以 FFDec 导出结果为准，再逐项导入。</p>
+      </article>
+    </section>
+    <footer>本预览用于验证 HTML5 引擎骨架；1:1 复刻须通过原版逐帧与战斗行为对照验收。</footer>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

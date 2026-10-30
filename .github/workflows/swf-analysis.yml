@@ -1,0 +1,60 @@
+name: SWF analysis and HTML5 checks
+
+on:
+  push:
+    branches: [main, feature/html5-rebuild-foundation]
+    paths:
+      - "拳皇wing1.4.swf"
+      - "FFDec/**"
+      - "tools/**"
+      - "web/**"
+      - "docs/**"
+      - ".github/workflows/swf-analysis.yml"
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swf-analysis
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+          architecture: x64
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify Java runtime
+        run: java -version
+
+      - name: Run HTML5 engine tests
+        run: npm --prefix web test
+
+      - name: Analyze original SWF with FFDec
+        run: python3 tools/analyze_swf.py --output build/swf-analysis
+
+      - name: Upload analysis report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swf-analysis
+          path: build/swf-analysis/
+          if-no-files-found: warn
+          retention-days: 7
