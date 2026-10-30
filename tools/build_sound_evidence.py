@@ -24,15 +24,15 @@ def _sound_info_end(body: bytes, cursor: int) -> int:
         raise ValueError("Truncated SOUNDINFO flags")
     flags = body[cursor]
     cursor += 1
-    if flags & 0x20:
+    if flags & 0x01:
         cursor += 4
-    if flags & 0x10:
+    if flags & 0x02:
         cursor += 4
-    if flags & 0x08:
+    if flags & 0x04:
         cursor += 2
     if cursor > len(body):
         raise ValueError("Truncated SOUNDINFO fields")
-    if flags & 0x04:
+    if flags & 0x08:
         if cursor >= len(body):
             raise ValueError("Truncated SOUNDINFO envelope count")
         points = body[cursor]

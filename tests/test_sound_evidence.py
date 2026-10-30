@@ -57,7 +57,7 @@ class SoundEvidenceTests(unittest.TestCase):
 
     def test_truncated_sound_info_rejected(self):
         with self.assertRaisesRegex(ValueError, "Truncated SOUNDINFO"):
-            analyze(sound_fixture(tag(15, struct.pack("<HB", 7, 0x20))))
+            analyze(sound_fixture(tag(15, struct.pack("<HB", 7, 0x01))))
 
     def test_sound_tag_offset_tampering_rejected(self):
         with tempfile.TemporaryDirectory() as d:
@@ -71,7 +71,16 @@ class SoundEvidenceTests(unittest.TestCase):
 
     def test_sound_info_envelope_length_checked(self):
         with self.assertRaisesRegex(ValueError, "Truncated SOUNDINFO envelope"):
-            analyze(sound_fixture(tag(15, struct.pack("<HB", 7, 0x04) + b"\x01")))
+            analyze(sound_fixture(tag(15, struct.pack("<HB", 7, 0x08) + b"\x01")))
+
+    def test_sync_stop_flag_has_no_optional_payload(self):
+        report = analyze(sound_fixture(tag(15, struct.pack("<HB", 7, 0x20))))
+        self.assertEqual(report["start_sound_count"], 2)
+
+    def test_soundinfo_optional_fields_have_correct_bit_positions(self):
+        info = bytes([0x0F]) + b"\x00" * 4 + b"\x00" * 4 + b"\x02\x00" + b"\x01" + b"\x00" * 8
+        report = analyze(sound_fixture(tag(15, struct.pack("<H", 7) + info)))
+        self.assertEqual(report["start_sound_count"], 2)
 
     def test_stream_block_without_header_reported(self):
         report = analyze(sound_fixture(tag(39, struct.pack("<HH", 9, 1) + tag(19, b"\x00") + tag(1) + tag(0))))
