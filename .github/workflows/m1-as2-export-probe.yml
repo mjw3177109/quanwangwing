@@ -32,8 +32,32 @@ jobs:
       - name: Verify Java
         run: java -version
 
-      - name: Export ActionScript with bounded timeout
-        run: python3 tools/analyze_swf.py --phase scripts --timeout 45 --output build/as2-probe
+      - name: Export ActionScript with bounded retry for partial FFDec output
+        run: |
+          for attempt in 1 2 3; do
+            echo "FFDec export attempt $attempt/3"
+            if python3 tools/analyze_swf.py --phase scripts --timeout 45 --output build/as2-probe; then
+              if python3 - <<'PY'
+          from pathlib import Path
+          root = Path("build/as2-probe/exports/scripts")
+          files = [p for p in root.rglob("*") if p.is_file()]
+          empty = sum(p.stat().st_size == 0 for p in files)
+          core = root / "scripts/__Packages/role_corn/Role.as"
+          core_bytes = core.stat().st_size if core.is_file() else 0
+          print(f"Preflight: scripts={len(files)}, empty={empty}, Role.as={core_bytes} bytes")
+          if len(files) != 7054 or empty != 126 or core_bytes < 100000:
+              raise SystemExit("Partial FFDec export detected; full validation remains mandatory")
+          PY
+              then
+                break
+              fi
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "FFDec export remained incomplete after 3 attempts"
+              exit 1
+            fi
+            rm -rf build/as2-probe/exports/scripts
+          done
 
       - name: Validate export count without publishing source
         run: |
