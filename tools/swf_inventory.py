@@ -165,6 +165,47 @@ def inventory(path: Path) -> dict:
                     "tag_name": entry["tag_name"], "timeline": timeline,
                     "offset_uncompressed": offset,
                 })
+            # Metadata-only cross-references; never copy original resource bodies.
+            if code in (4, 5):
+                if len(payload) < 4:
+                    raise ValueError(f"Truncated object reference at {offset}")
+                entry["character_id_reference"] = struct.unpack_from("<H", payload, 0)[0]
+                entry["depth"] = struct.unpack_from("<H", payload, 2)[0]
+            elif code in (26, 70):
+                header_size = 3 if code == 26 else 4
+                if len(payload) < header_size:
+                    raise ValueError(f"Truncated placement header at {offset}")
+                flags = payload[0]
+                entry["move"] = bool(flags & 1)
+                entry["depth"] = struct.unpack_from("<H", payload, 1 if code == 26 else 2)[0]
+                cursor = header_size
+                if code == 70 and (payload[1] & 0x08 or
+                                   (payload[1] & 0x10 and flags & 0x02)):
+                    terminator = payload.find(b"\x00", cursor)
+                    if terminator < 0:
+                        raise ValueError(f"Unterminated PlaceObject3 class at {offset}")
+                    cursor = terminator + 1
+                if flags & 0x02:
+                    if cursor + 2 > len(payload):
+                        raise ValueError(f"Truncated placement character ID at {offset}")
+                    entry["character_id_reference"] = struct.unpack_from("<H", payload, cursor)[0]
+            elif code == 28:
+                if len(payload) < 2:
+                    raise ValueError(f"Truncated removal depth at {offset}")
+                entry["depth"] = struct.unpack_from("<H", payload, 0)[0]
+            elif code == 15:
+                if len(payload) < 2:
+                    raise ValueError(f"Truncated StartSound ID at {offset}")
+                entry["sound_id_reference"] = struct.unpack_from("<H", payload, 0)[0]
+            elif code == 43:
+                terminator = payload.find(b"\x00")
+                if terminator < 0:
+                    raise ValueError(f"Unterminated FrameLabel at {offset}")
+                entry["frame_label"] = payload[:terminator].decode("utf-8", errors="replace")
+            elif code == 59:
+                if len(payload) < 2:
+                    raise ValueError(f"Truncated DoInitAction target at {offset}")
+                entry["init_target_sprite_id"] = struct.unpack_from("<H", payload, 0)[0]
             if code == 76:
                 symbols.extend(_names(payload))
             elif code == 56:
@@ -174,6 +215,8 @@ def inventory(path: Path) -> dict:
                     "tag_code": code, "tag_name": entry["tag_name"],
                     "timeline": timeline, "frame": frame,
                     "offset_uncompressed": offset, "length": size,
+                    **({"init_target_sprite_id": entry["init_target_sprite_id"]}
+                       if code == 59 else {}),
                 })
             counts[str(code)] += 1
             records.append(entry)

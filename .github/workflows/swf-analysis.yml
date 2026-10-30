@@ -65,6 +65,9 @@ jobs:
       - name: Build traceable asset and character index
         run: python3 tools/build_asset_index.py --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/asset-index.json
 
+      - name: Build timeline placement, script, sound and frame-label reference map
+        run: python3 tools/build_timeline_index.py --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/timeline-index.json
+
       - name: Run expensive AS1/AS2 and link diagnostics (manual)
         if: github.event_name == 'workflow_dispatch' && inputs.phase == 'deep'
         run: python3 tools/analyze_swf.py --phase deep --timeout 120 --output build/swf-analysis
