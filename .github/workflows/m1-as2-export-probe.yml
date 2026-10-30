@@ -1,0 +1,79 @@
+name: M1 AS2 export diagnostic (source stays on runner)
+
+on:
+  push:
+    branches: [feature/m1-as2-export-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m1-as2-export-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout original SWF and FFDec
+        uses: actions/checkout@v4
+
+      - name: Set up Java 1.8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+          architecture: x64
+
+      - name: Verify Java
+        run: java -version
+
+      - name: Export ActionScript with bounded timeout
+        run: python3 tools/analyze_swf.py --phase scripts --timeout 45 --output build/as2-probe
+
+      - name: Validate export count without publishing source
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          summary = json.loads((root / "summary.json").read_text(encoding="utf-8"))
+          files = [p for p in (root / "exports" / "scripts").rglob("*") if p.is_file()]
+          suffixes = {}
+          for path in files:
+              suffixes[path.suffix.lower()] = suffixes.get(path.suffix.lower(), 0) + 1
+          print(json.dumps({"scripts_complete": summary["scripts_complete"],
+                            "exported_file_count": len(files),
+                            "suffix_counts": suffixes}, ensure_ascii=False))
+          if not summary["scripts_complete"] or not files:
+              raise SystemExit("FFDec script export incomplete or empty")
+          PY
+
+      - name: Report bounded error metadata only
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          summary_path = root / "summary.json"
+          if summary_path.is_file():
+              data = json.loads(summary_path.read_text(encoding="utf-8"))
+              print(json.dumps({"phase": data.get("phase"),
+                                "scripts_complete": data.get("scripts_complete"),
+                                "exported_file_count": data.get("exported_file_count"),
+                                "commands": data.get("commands")}, ensure_ascii=False))
+          else:
+              print("No summary produced; inspect setup/runner failure.")
+          PY
+
+      - name: Upload metadata only (never source or raw export logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: as2-probe-metadata
+          path: build/as2-probe/summary.json
+          if-no-files-found: warn
+          retention-days: 7
