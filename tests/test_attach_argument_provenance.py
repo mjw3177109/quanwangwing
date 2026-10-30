@@ -136,7 +136,8 @@ class DynamicAttachTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             result = self.build(Path(d), source)
             self.assertEqual(result["dynamic_argument_count"], 0)
-            self.assertEqual(result["classification_counts"]["literal_unmatched"], 1)
+            self.assertEqual(result["attach_call_candidate_count"], 1)
+            self.assertEqual(result["events"], [])
 
     def test_increment_operator_is_not_concatenation(self):
         source = b'attachMovie(counter++ + suffix, "a", 1);'

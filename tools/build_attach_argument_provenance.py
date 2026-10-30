@@ -36,7 +36,10 @@ def _first_arg(source: str, masked: str, start: int) -> tuple[str, str] | None:
     for i in range(start, min(len(masked), start + 16384)):
         c = masked[i]
         if not depth and c in ",)":
-            return source[start:i].strip(), masked[start:i].strip()
+            segment = source[start:i]
+            left = len(segment) - len(segment.lstrip())
+            right = len(segment.rstrip())
+            return segment[left:right], masked[start + left:start + right]
         if c in "([{":
             depth.append(c)
         elif c in closing:
@@ -89,7 +92,7 @@ def _shape(raw: str, masked: str) -> str:
         return "concatenation"
     if CALL.match(masked):
         return "call_expression"
-    if not masked:
+    if not masked.strip():
         return "opaque_literal_or_empty" if raw else "empty"
     return "other_expression"
 
