@@ -38,7 +38,12 @@ jobs:
           python3 - <<'PY'
           import hashlib
           import json
+          import re
+          import sys
+          from collections import defaultdict
           from pathlib import Path
+          sys.path.insert(0, "tools")
+          from swf_inventory import load_swf
           root = Path("build/as2-probe")
           summary = json.loads((root / "summary.json").read_text(encoding="utf-8"))
           export_root = root / "exports" / "scripts"
@@ -50,11 +55,37 @@ jobs:
               for p in files
           ]
           empty = [r["path"] for r in records if r["size_bytes"] == 0]
+          swf_bytes, _ = load_swf(Path("拳皇wing1.4.swf"))
+          swf_manifest = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          actions = defaultdict(list)
+          for tag in swf_manifest["tags"]:
+              if tag["tag_code"] == 12:
+                  actions[(tag["timeline"], tag["frame"])].append(tag)
+          noops, unexpected = [], []
+          for path in empty:
+              match = re.fullmatch(
+                  r"scripts/(?:DefineSprite_(\d+)(?:_[^/]*)?/)?frame_(\d+)/DoAction\.as",
+                  path
+              )
+              if match is None:
+                  unexpected.append(path)
+                  continue
+              timeline = "sprite:" + match.group(1) if match.group(1) else "main"
+              source_tags = actions[(timeline, int(match.group(2)) - 1)]
+              if (len(source_tags) == 1 and source_tags[0]["length"] == 1
+                      and swf_bytes[source_tags[0]["body_offset_uncompressed"]] == 0):
+                  noops.append(path)
+              else:
+                  unexpected.append(path)
           index = {
               "source_sha256": summary["source"]["sha256"],
               "script_count": len(records),
               "total_bytes": sum(r["size_bytes"] for r in records),
               "empty_count": len(empty),
+              "verified_noop_empty_count": len(noops),
+              "unexpected_empty_count": len(unexpected),
+              "verified_noop_paths": noops,
+              "unexpected_empty_paths": unexpected,
               "files": records,
               "note": "Metadata hashes only; no original AS2 source is published."
           }
@@ -64,9 +95,11 @@ jobs:
           print(json.dumps({"scripts_complete": summary["scripts_complete"],
                             "exported_file_count": len(files),
                             "empty_count": len(empty),
+                            "verified_noop_empty_count": len(noops),
+                            "unexpected_empty_count": len(unexpected),
                             "total_bytes": index["total_bytes"]}, ensure_ascii=False))
-          if not summary["scripts_complete"] or len(files) != 7054 or empty:
-              raise SystemExit("Expected 7054 non-empty AS2 exports from verified original SWF")
+          if not summary["scripts_complete"] or len(files) != 7054 or unexpected:
+              raise SystemExit("AS2 exports incomplete or unexplained empty files remain")
           PY
 
       - name: Report bounded error metadata only
