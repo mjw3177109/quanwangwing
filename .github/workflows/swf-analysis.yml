@@ -203,6 +203,33 @@ jobs:
               raise SystemExit("Frame-tail tag accounting error")
           PY
 
+      - name: Cross-reference zero-ShowFrame sprite static linkage (metadata only)
+        run: |
+          python3 tools/build_zero_frame_sprite_references.py \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --tail build/swf-analysis/frame-tail-evidence.json \
+            --output build/swf-analysis/zero-frame-sprite-references.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          m = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          t = json.loads((root / "frame-tail-evidence.json").read_text(encoding="utf-8"))
+          r = json.loads((root / "zero-frame-sprite-references.json").read_text(encoding="utf-8"))
+          if r["source_sha256"] != m["source"]["sha256"]:
+              raise SystemExit("Zero-frame reference provenance mismatch")
+          if r["zero_show_frame_sprite_count"] != len(r["sprites"]):
+              raise SystemExit("Zero-frame sprite row accounting mismatch")
+          if r["static_place_reference_count"] != sum(
+                  x["static_place_reference_count"] for x in r["sprites"]):
+              raise SystemExit("Zero-frame static placement accounting mismatch")
+          if r["static_init_action_reference_count"] != sum(
+                  x["static_init_action_reference_count"] for x in r["sprites"]):
+              raise SystemExit("Zero-frame init action accounting mismatch")
+          if r["zero_show_frame_sprite_count"] > t["tail_class_counts"].get("no_show_frame", 0):
+              raise SystemExit("Zero-frame sprite count exceeds frame-tail evidence")
+          PY
+
       - name: Validate unknown tag 253/255 headers and produce metadata-only evidence
         run: |
           python3 tools/build_unknown_tag_evidence.py \
