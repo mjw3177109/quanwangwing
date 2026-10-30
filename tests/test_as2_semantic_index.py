@@ -30,6 +30,48 @@ class Kyo_role extends RoleBase {
         self.assertEqual(hints["marker_counts"]["sprite_attach"], 0)
         self.assertNotIn("Fake", str(hints))
 
+    def test_prototype_and_callback_assignments_are_metadata_only(self):
+        source = b'''// Fake.prototype.nope = function() {}
+Role.prototype.attack = function() { Key.isDown(65); };
+this.onEnterFrame = function() { this.gotoAndPlay(2); };
+_root.control.onKeyDown = function handler() { };
+var local = function() { };
+var notAnAssignment = "Fake.prototype.fake = function()";
+/* _root.onLoad = function() {} */
+if (some == function() {}) { }
+'''
+        hints = inspect_source(source)
+        self.assertEqual(
+            [(x["target"], x["line"], x["kind"]) for x in hints["assigned_functions"]],
+            [("Role.prototype.attack", 2, "prototype_method"),
+             ("this.onEnterFrame", 3, "event_callback"),
+             ("_root.control.onKeyDown", 4, "event_callback"),
+             ("local", 5, "function_assignment")]
+        )
+        self.assertEqual(hints["marker_counts"]["keyboard"], 1)
+        self.assertNotIn("this.gotoAndPlay(2)", str(hints))
+        self.assertNotIn("Fake.prototype.fake", str(hints))
+
+    def test_core_role_script_is_included_when_hash_verified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "scripts/__Packages/role_corn/Role.as"
+            path.parent.mkdir(parents=True)
+            raw = b"Role.prototype.attack = function() { Key.isDown(65); }" + b" " * 100000
+            path.write_bytes(raw)
+            export = {"source_sha256": "a", "script_count": 1,
+                      "files": [{"path": "scripts/__Packages/role_corn/Role.as",
+                                 "size_bytes": len(raw),
+                                 "sha256": hashlib.sha256(raw).hexdigest()}]}
+            assets = {"source_sha256": "a", "character_class_candidates": []}
+            result = build_index(root, export, assets)
+            self.assertEqual(result["candidate_script_count"], 1)
+            self.assertTrue(result["candidate_scripts"][0]["core_runtime_candidate"])
+            self.assertEqual(result["assigned_function_count_in_candidate_scripts"], 1)
+            self.assertEqual(result["assigned_function_kinds_in_candidate_scripts"],
+                             {"prototype_method": 1})
+            self.assertNotIn("Key.isDown(65)", str(result))
+
     def test_role_linkage_is_metadata_only_and_hash_checked(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

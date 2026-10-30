@@ -28,3 +28,11 @@ python3 tools/build_asset_index.py --manifest build/as2-probe/swf-manifest.json 
 python3 tools/build_as2_semantic_index.py --scripts build/as2-probe/exports/scripts --export-index build/as2-probe/script-export-index.json --asset-index build/as2-probe/asset-index.json --output build/as2-probe/as2-semantic-index.json
 
 下一步：优先核查角色初始化与状态转换、键盘映射、hitTest 调用所在函数，再以原版 SWF 的时间轴/运行行为交叉验证。不得凭关键词直接填充攻击判定、伤害或招式帧数。
+
+## M1 后续增量：函数赋值形式与核心运行时脚本
+
+AS2 可能使用 `Class.prototype.method = function(...)`、`this.onEnterFrame = function(...)` 等函数表达式赋值，而不仅是 `function method(...)` 声明。静态索引现在额外输出 `assigned_functions` 的目标标识符、行号及类别（prototype_method/event_callback/function_assignment），并统计总量。**这些仍是词法候选，绝非已确认招式。**
+
+同时将经哈希与最小长度门禁验证的 `__Packages/role_corn/Role.as` 纳入候选语义索引；此前仅验证其完整性却未检查其方法形式。PR 检查会在临时 runner 上重新导出并生成 metadata-only artifact，源文件正文不上传。
+
+后续必须逐项核查函数赋值与原版 SWF 时间轴、事件和运行行为的关联，不能仅凭函数名称填写伤害、hitbox 或动作帧数。

@@ -2,7 +2,9 @@ name: M1 AS2 export diagnostic (source stays on runner)
 
 on:
   push:
-    branches: [feature/m1-as2-export-probe, feature/m1-as2-semantic-map]
+    branches: [feature/m1-as2-export-probe, feature/m1-as2-semantic-map, feature/m1-as2-assigned-function-evidence]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -121,6 +123,9 @@ jobs:
               raise SystemExit("Expected 16 original base/Type2 role candidate scripts")
           if d["verified_script_count"] != 7054:
               raise SystemExit("AS2 export count regression")
+          core = [s for s in d["candidate_scripts"] if s.get("core_runtime_candidate")]
+          if len(core) != 1 or core[0]["size_bytes"] < 100000:
+              raise SystemExit("Critical Role.as was not included in semantic evidence")
           PY
 
       - name: Report bounded error metadata only

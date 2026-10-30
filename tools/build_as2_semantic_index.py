@@ -15,6 +15,17 @@ from pathlib import Path
 import re
 
 FUNCTION = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(")
+# AS2 often declares methods as prototype/function-expression assignments rather
+# than "function name(...)". Keep these as lexical evidence only.
+ASSIGNED_FUNCTION = re.compile(
+    r"(?<![\\w$])(?P<target>[A-Za-z_$][\\w$]*(?:\\s*\\.\\s*[A-Za-z_$][\\w$]*){0,12})"
+    r"\\s*=\\s*function\\s*(?:[A-Za-z_$][\\w$]*\\s*)?\\("
+)
+CALLBACK_NAMES = frozenset({
+    "onEnterFrame", "onLoad", "onKeyDown", "onKeyUp", "onPress", "onRelease",
+    "onRollOver", "onRollOut", "onMouseDown", "onMouseUp", "onHit",
+})
+
 CLASS = re.compile(r"\bclass\s+([A-Za-z_$][\w.$]*)\b")
 EXTENDS = re.compile(r"\bextends\s+([A-Za-z_$][\w.$]*)\b")
 MARKERS = {
@@ -96,7 +107,17 @@ def inspect_source(raw: bytes) -> dict:
     masked = mask_comments_strings(raw.decode("utf-8", errors="replace"))
     newlines = [i for i, char in enumerate(masked) if char == "\n"]
     line = lambda offset: bisect_right(newlines, offset - 1) + 1
+    assigned = []
+    for match in ASSIGNED_FUNCTION.finditer(masked):
+        target = re.sub(r"\\s*\\.\\s*", ".", match.group("target"))
+        kind = (
+            "prototype_method" if ".prototype." in target
+            else "event_callback" if target.rsplit(".", 1)[-1] in CALLBACK_NAMES
+            else "function_assignment"
+        )
+        assigned.append({"target": target, "line": line(match.start()), "kind": kind})
     return {
+        "assigned_functions": assigned,
         "declared_classes": [
             {"name": m.group(1), "line": line(m.start())} for m in CLASS.finditer(masked)
         ],
@@ -155,9 +176,10 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
         if rel == "scripts/__Packages/role_corn/Role.as" and len(raw) < 100000:
             raise ValueError("Critical Role.as export is unexpectedly short; likely partial FFDec output")
         is_role = rel in expected_roles
+        is_core = rel == critical
         is_system = rel.startswith("scripts/__Packages/") and SYSTEM_NAME.search(Path(rel).stem) is not None
         is_frame = "/frame_" in rel and len(raw) >= 32768
-        if is_role or is_system or is_frame:
+        if is_role or is_core or is_system or is_frame:
             hints = inspect_source(raw)
             aggregate.update(hints["marker_counts"])
             script_summaries.append({
@@ -165,6 +187,7 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
                 "sha256": record["sha256"],
                 "size_bytes": len(raw),
                 "role_candidate": is_role,
+                "core_runtime_candidate": is_core,
                 "system_name_candidate": bool(is_system),
                 "large_frame_script_candidate": is_frame,
                 **hints,
@@ -175,6 +198,7 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
             match = by_path[entry["expected_script_path"]]
             entry["declared_classes"] = match["declared_classes"]
             entry["named_function_count"] = len(match["named_functions"])
+            entry["assigned_function_count"] = len(match["assigned_functions"])
     return {
         "source_sha256": export_index["source_sha256"],
         "verified_script_count": len(records),
@@ -182,11 +206,19 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
         "verified_noop_empty_count": export_index.get("verified_noop_empty_count"),
         "role_script_candidates": role_map,
         "candidate_script_count": len(script_summaries),
+        "assigned_function_count_in_candidate_scripts": sum(
+            len(item["assigned_functions"]) for item in script_summaries
+        ),
+        "assigned_function_kinds_in_candidate_scripts": dict(sorted(Counter(
+            item["kind"] for summary in script_summaries
+            for item in summary["assigned_functions"]
+        ).items())),
         "marker_counts_in_candidate_scripts": dict(sorted(aggregate.items())),
         "candidate_scripts": sorted(script_summaries, key=lambda x: x["path"]),
         "limitations": [
             "Names, paths, line numbers and lexical markers only; no ActionScript bodies are published.",
             "Method and keyword matches are heuristics, not verified gameplay semantics.",
+            "Function assignment targets are lexical candidates; computed properties and regex literals may be missed.",
             "Role path matches do not prove selectability, hitboxes, damage or move timings.",
             "Source files remain on the runner and are not included in the artifact.",
         ],
@@ -210,6 +242,8 @@ def main() -> None:
         "role_script_candidates": len(result["role_script_candidates"]),
         "role_scripts_present": sum(r["export_present"] for r in result["role_script_candidates"]),
         "candidate_script_count": result["candidate_script_count"],
+        "assigned_function_count": result["assigned_function_count_in_candidate_scripts"],
+        "assigned_function_kinds": result["assigned_function_kinds_in_candidate_scripts"],
         "marker_counts": result["marker_counts_in_candidate_scripts"],
     }, ensure_ascii=False))
 
