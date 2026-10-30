@@ -46,15 +46,49 @@ def _first_arg(source: str, masked: str, start: int) -> tuple[str, str] | None:
     return None
 
 
+
+PLAIN_LITERAL = re.compile(r"""^(['"])([^"'\\\r\n]*)\1$""")
+
+
+def _split_concat(raw: str, masked: str) -> list[tuple[str, str]] | None:
+    """Split only top-level binary '+' tokens, never quoted or nested pluses."""
+    if len(raw) != len(masked):
+        return None
+    stack = []
+    closes = {")": "(", "]": "[", "}": "{"}
+    parts = []
+    start = 0
+    for i, char in enumerate(masked):
+        if char in "([{":
+            stack.append(char)
+        elif char in closes:
+            if not stack or stack.pop() != closes[char]:
+                return None
+        elif char == "+" and not stack:
+            # Increment/decrement and compound operators are not concatenation.
+            if (i > 0 and masked[i - 1] == "+") or (
+                i + 1 < len(masked) and masked[i + 1] in "+="
+            ):
+                return None
+            parts.append((raw[start:i].strip(), masked[start:i].strip()))
+            start = i + 1
+    if stack or not parts:
+        return None
+    parts.append((raw[start:].strip(), masked[start:].strip()))
+    if any(not raw_part for raw_part, _ in parts):
+        return None
+    return parts
+
+
 def _shape(raw: str, masked: str) -> str:
     if IDENTIFIER.fullmatch(masked):
         return "identifier"
     if MEMBER.fullmatch(masked):
         return "member_reference"
+    if _split_concat(raw, masked) is not None:
+        return "concatenation"
     if CALL.match(masked):
         return "call_expression"
-    if "+" in masked:
-        return "concatenation"
     if not masked:
         return "opaque_literal_or_empty" if raw else "empty"
     return "other_expression"
@@ -102,6 +136,60 @@ def _assignment_candidates(
             "unmatched_literal_sha256": unknown_hash,
         })
     return candidates
+
+
+
+def _concat_components(
+    raw: str, masked: str, source: str, before: int,
+    scope_start: int | None, line_breaks: list[int],
+    names: dict[str, set[int]],
+) -> list[dict]:
+    """Describe syntax and lexical assignment hints without leaking source."""
+    parts = _split_concat(raw, masked)
+    if parts is None:
+        return []
+    result = []
+    for position, (piece, masked_piece) in enumerate(parts):
+        literal = PLAIN_LITERAL.fullmatch(piece)
+        matches = []
+        unknown_literal_sha = None
+        identifier_sha = None
+        assignments = []
+        if literal:
+            value = literal.group(2)
+            if value in names:
+                kind = "literal_export_match"
+                matches = [
+                    {"name": value, "character_id": cid}
+                    for cid in sorted(names[value])
+                ]
+            else:
+                kind = "literal_unmatched"
+                unknown_literal_sha = _hash(value)
+        elif IDENTIFIER.fullmatch(masked_piece):
+            kind = "identifier"
+            identifier_sha = _hash(masked_piece)
+            assignments = _assignment_candidates(
+                source, masked, masked_piece, before,
+                scope_start, line_breaks, names,
+            )
+        elif MEMBER.fullmatch(masked_piece):
+            kind = "member_reference"
+        elif CALL.match(masked_piece):
+            kind = "call_expression"
+        else:
+            kind = "other_or_unresolved"
+        result.append({
+            "position": position,
+            "kind": kind,
+            "component_sha256": _hash(piece),
+            "matched_export_assets": matches,
+            "unmatched_literal_sha256": unknown_literal_sha,
+            "identifier_sha256": identifier_sha,
+            "lexical_assignment_candidates": assignments,
+            "runtime_value_verified": False,
+        })
+    return result
 
 
 def build_dynamic_argument_evidence(
@@ -182,6 +270,12 @@ def build_dynamic_argument_evidence(
                     scope_start, line_breaks, names,
                 ) if shape == "identifier" else []
             )
+            component_evidence = (
+                _concat_components(
+                    raw_arg, masked_arg, source, match.start(),
+                    scope_start, line_breaks, names,
+                ) if shape == "concatenation" else []
+            )
             kinds[shape] += 1
             results.append({
                 "script_path": rel,
@@ -191,6 +285,7 @@ def build_dynamic_argument_evidence(
                 "argument_sha256": _hash(raw_arg) if arg is not None else None,
                 "identifier_sha256": _hash(masked_arg) if shape == "identifier" else None,
                 "lexical_assignment_candidates": candidates,
+                "concatenation_components": component_evidence,
                 "scope_basis": "candidate_function_start" if scope_start else "file_prior_text",
                 "runtime_binding_verified": False,
             })
@@ -215,6 +310,7 @@ def build_dynamic_argument_evidence(
             "A matching ExportAssets string in a prior assignment does not prove the call uses that value at runtime.",
             "Function scope start lines are approximate; no control-flow or data-flow proof is claimed.",
             "Only SWF ExportAssets names may appear in output; all other literals and argument identifiers are hashed.",
+            "Concatenation components are lexical evidence, not evaluated runtime strings or proven character loads.",
             "No original ActionScript bodies, images, audio, or asset bytes are published.",
         ],
     }
