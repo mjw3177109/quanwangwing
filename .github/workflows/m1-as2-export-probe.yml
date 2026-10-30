@@ -32,8 +32,32 @@ jobs:
       - name: Verify Java
         run: java -version
 
-      - name: Export ActionScript with bounded timeout
-        run: python3 tools/analyze_swf.py --phase scripts --timeout 45 --output build/as2-probe
+      - name: Export ActionScript with bounded retry for partial FFDec output
+        run: |
+          for attempt in 1 2 3; do
+            echo "FFDec export attempt $attempt/3"
+            if python3 tools/analyze_swf.py --phase scripts --timeout 45 --output build/as2-probe; then
+              if python3 - <<'PY'
+          from pathlib import Path
+          root = Path("build/as2-probe/exports/scripts")
+          files = [p for p in root.rglob("*") if p.is_file()]
+          empty = sum(p.stat().st_size == 0 for p in files)
+          core = root / "scripts/__Packages/role_corn/Role.as"
+          core_bytes = core.stat().st_size if core.is_file() else 0
+          print(f"Preflight: scripts={len(files)}, empty={empty}, Role.as={core_bytes} bytes")
+          if len(files) != 7054 or empty != 126 or core_bytes < 100000:
+              raise SystemExit("Partial FFDec export detected; full validation remains mandatory")
+          PY
+              then
+                break
+              fi
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "FFDec export remained incomplete after 3 attempts"
+              exit 1
+            fi
+            rm -rf build/as2-probe/exports/scripts
+          done
 
       - name: Validate export count without publishing source
         run: |
@@ -210,6 +234,34 @@ jobs:
               raise SystemExit("Concatenation component accounting mismatch")
           PY
 
+      - name: Trace hashed identifiers across verified AS2 scripts
+        run: |
+          python3 tools/build_attach_identifier_references.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --provenance build/as2-probe/attach-argument-provenance.json \
+            --output build/as2-probe/attach-identifier-references.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("build/as2-probe/attach-identifier-references.json").read_text(encoding="utf-8"))
+          p = json.loads(Path("build/as2-probe/attach-argument-provenance.json").read_text(encoding="utf-8"))
+          expected = {c["identifier_sha256"]
+                      for e in p["events"]
+                      for c in e.get("concatenation_components", [])
+                      if c.get("kind") == "identifier"}
+          expected.update(e["identifier_sha256"] for e in p["events"]
+                          if e["argument_shape"] == "identifier")
+          if d["verified_script_count"] != 7054 or d["identifier_target_count"] != len(expected):
+              raise SystemExit("AS2 identifier reference coverage mismatch")
+          if {t["identifier_sha256"] for t in d["targets"]} != expected:
+              raise SystemExit("Hashed identifier target mismatch")
+          if sum(t["occurrence_count"] for t in d["targets"]) != d["identifier_occurrence_count"]:
+              raise SystemExit("Identifier occurrence accounting mismatch")
+          if any(t["occurrence_count"] < 1 or t["runtime_binding_verified"] for t in d["targets"]):
+              raise SystemExit("Unverified identifier reference incorrectly classified")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -241,5 +293,6 @@ jobs:
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
             build/as2-probe/attach-argument-provenance.json
+            build/as2-probe/attach-identifier-references.json
           if-no-files-found: warn
           retention-days: 7
