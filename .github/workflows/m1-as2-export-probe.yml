@@ -166,6 +166,27 @@ jobs:
               raise SystemExit("Initialization accounting mismatch")
           PY
 
+      - name: Trace AS2 attachMovie linkage against verified ExportAssets
+        run: |
+          python3 tools/build_runtime_attach_evidence.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --asset-index build/as2-probe/asset-index.json \
+            --crosswalk build/as2-probe/role-crosswalk.json \
+            --semantic-index build/as2-probe/as2-semantic-index.json \
+            --output build/as2-probe/runtime-attach-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("build/as2-probe/runtime-attach-evidence.json").read_text(encoding="utf-8"))
+          if d["verified_script_count"] != 7054:
+              raise SystemExit("AS2 source coverage regression")
+          if sum(d["classification_counts"].values()) != d["attach_call_candidate_count"]:
+              raise SystemExit("attachMovie classification accounting mismatch")
+          if any(e["classification"] == "literal_export_match" and not e["matched_export_assets"] for e in d["events"]):
+              raise SystemExit("Unresolved ExportAssets match")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -195,5 +216,6 @@ jobs:
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/role-crosswalk.json
             build/as2-probe/role-reference-evidence.json
+            build/as2-probe/runtime-attach-evidence.json
           if-no-files-found: warn
           retention-days: 7
