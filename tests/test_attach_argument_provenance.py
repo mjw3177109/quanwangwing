@@ -93,6 +93,59 @@ class DynamicAttachTests(unittest.TestCase):
             result = self.build(Path(d), b'attachMovie("\\x4b", "a", 1);')
             self.assertEqual(result["events"][0]["argument_shape"], "opaque_literal_or_empty")
 
+
+    def test_concat_components_hash_unknown_literal_and_trace_identifier(self):
+        source = (b'var suffix = "Kyo_role";\n'
+                  b'attachMovie("__Packages." + suffix, "instance", 1);\n')
+        with tempfile.TemporaryDirectory() as d:
+            result = self.build(Path(d), source)
+            event = result["events"][0]
+            self.assertEqual(event["argument_shape"], "concatenation")
+            parts = event["concatenation_components"]
+            self.assertEqual([p["kind"] for p in parts],
+                             ["literal_unmatched", "identifier"])
+            self.assertEqual(len(parts[0]["unmatched_literal_sha256"]), 64)
+            self.assertEqual(parts[1]["lexical_assignment_candidates"][0]["rhs_kind"],
+                             "literal_unmatched")
+            self.assertFalse(parts[1]["runtime_value_verified"])
+            self.assertNotIn("__Packages.", str(result))
+            self.assertNotIn("Kyo_role", str(result))
+            self.assertNotIn("suffix", str(result))
+
+    def test_concat_literal_export_name_is_allowlisted(self):
+        source = b'attachMovie("otherClip" + postfix, "a", 1);'
+        with tempfile.TemporaryDirectory() as d:
+            result = self.build(Path(d), source)
+            parts = result["events"][0]["concatenation_components"]
+            self.assertEqual(parts[0]["kind"], "literal_export_match")
+            self.assertEqual(parts[0]["matched_export_assets"],
+                             [{"name": "otherClip", "character_id": 88}])
+            self.assertEqual(parts[1]["kind"], "identifier")
+
+    def test_nested_plus_is_not_split(self):
+        source = b'attachMovie(resolve(a + b) + "otherClip", "a", 1);'
+        with tempfile.TemporaryDirectory() as d:
+            result = self.build(Path(d), source)
+            parts = result["events"][0]["concatenation_components"]
+            self.assertEqual(len(parts), 2)
+            self.assertEqual(parts[0]["kind"], "call_expression")
+            self.assertEqual(parts[1]["kind"], "literal_export_match")
+
+    def test_quoted_plus_does_not_create_concat(self):
+        source = b'attachMovie("unknown+symbol", "a", 1);'
+        with tempfile.TemporaryDirectory() as d:
+            result = self.build(Path(d), source)
+            self.assertEqual(result["dynamic_argument_count"], 0)
+            self.assertEqual(result["attach_call_candidate_count"], 1)
+            self.assertEqual(result["events"], [])
+
+    def test_increment_operator_is_not_concatenation(self):
+        source = b'attachMovie(counter++ + suffix, "a", 1);'
+        with tempfile.TemporaryDirectory() as d:
+            result = self.build(Path(d), source)
+            self.assertNotEqual(result["events"][0]["argument_shape"], "concatenation")
+            self.assertEqual(result["events"][0]["concatenation_components"], [])
+
     def test_tampered_source_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

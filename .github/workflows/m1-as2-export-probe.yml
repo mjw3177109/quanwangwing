@@ -206,6 +206,8 @@ jobs:
               raise SystemExit("Dynamic attachMovie argument accounting mismatch")
           if sum(d["argument_shape_counts"].values()) != d["dynamic_argument_count"]:
               raise SystemExit("Dynamic argument shape accounting mismatch")
+          if any(e["argument_shape"] == "concatenation" and len(e["concatenation_components"]) < 2 for e in d["events"]):
+              raise SystemExit("Concatenation component accounting mismatch")
           PY
 
       - name: Report bounded error metadata only
