@@ -146,7 +146,7 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
         rel = record["path"]
         if not rel.startswith("scripts/") or not rel.endswith(".as") or ".." in Path(rel).parts:
             raise ValueError("Invalid script relative path: " + rel)
-        path = scripts_root / Path(rel).relative_to("scripts")
+        path = scripts_root / rel
         if not path.is_file():
             raise ValueError("Export missing: " + rel)
         raw = path.read_bytes()

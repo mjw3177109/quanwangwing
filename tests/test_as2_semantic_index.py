@@ -33,7 +33,7 @@ class Kyo_role extends RoleBase {
     def test_role_linkage_is_metadata_only_and_hash_checked(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            p = root / "__Packages" / "Kyo_role.as"
+            p = root / "scripts" / "__Packages" / "Kyo_role.as"
             p.parent.mkdir(parents=True)
             raw = b"class Kyo_role { function attack() { this.hitTest(other); } }"
             p.write_bytes(raw)
@@ -71,7 +71,7 @@ class Kyo_role extends RoleBase {
     def test_partial_critical_role_script_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            path = root / "__Packages" / "role_corn" / "Role.as"
+            path = root / "scripts" / "__Packages" / "role_corn" / "Role.as"
             path.parent.mkdir(parents=True)
             raw = b"x" * 144
             path.write_bytes(raw)
