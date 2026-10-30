@@ -180,6 +180,29 @@ jobs:
               raise SystemExit("Frame audit delta accounting mismatch")
           PY
 
+      - name: Classify tags after final ShowFrame on discrepant timelines
+        run: |
+          python3 tools/build_frame_tail_evidence.py \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --audit build/swf-analysis/frame-count-audit.json \
+            --output build/swf-analysis/frame-tail-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          a = json.loads((root / "frame-count-audit.json").read_text(encoding="utf-8"))
+          t = json.loads((root / "frame-tail-evidence.json").read_text(encoding="utf-8"))
+          if t["source_sha256"] != a["source_sha256"]:
+              raise SystemExit("Frame-tail source mismatch")
+          if t["mismatch_count"] != a["mismatch_count"]:
+              raise SystemExit("Frame-tail mismatch accounting error")
+          if sum(t["tail_class_counts"].values()) != t["mismatch_count"]:
+              raise SystemExit("Frame-tail classification accounting error")
+          if sum(t["tail_tag_counts_by_code"].values()) != sum(
+                  r["tags_between_last_show_and_end"] for r in t["mismatches"]):
+              raise SystemExit("Frame-tail tag accounting error")
+          PY
+
       - name: Validate unknown tag 253/255 headers and produce metadata-only evidence
         run: |
           python3 tools/build_unknown_tag_evidence.py \
