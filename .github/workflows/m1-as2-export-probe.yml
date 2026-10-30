@@ -187,6 +187,27 @@ jobs:
               raise SystemExit("Unresolved ExportAssets match")
           PY
 
+      - name: Trace dynamic attachMovie argument and lexical assignment candidates
+        run: |
+          python3 tools/build_attach_argument_provenance.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --attach-evidence build/as2-probe/runtime-attach-evidence.json \
+            --asset-index build/as2-probe/asset-index.json \
+            --output build/as2-probe/attach-argument-provenance.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          a = json.loads(Path("build/as2-probe/runtime-attach-evidence.json").read_text(encoding="utf-8"))
+          d = json.loads(Path("build/as2-probe/attach-argument-provenance.json").read_text(encoding="utf-8"))
+          if d["verified_script_count"] != 7054:
+              raise SystemExit("AS2 source coverage regression")
+          if d["dynamic_argument_count"] != a["classification_counts"].get("dynamic_or_unresolved", 0):
+              raise SystemExit("Dynamic attachMovie argument accounting mismatch")
+          if sum(d["argument_shape_counts"].values()) != d["dynamic_argument_count"]:
+              raise SystemExit("Dynamic argument shape accounting mismatch")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -217,5 +238,6 @@ jobs:
             build/as2-probe/role-crosswalk.json
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
+            build/as2-probe/attach-argument-provenance.json
           if-no-files-found: warn
           retention-days: 7
