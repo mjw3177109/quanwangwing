@@ -40,3 +40,11 @@ GitHub Actions 定时执行 `inventory`；原版素材和完整反编译脚本�
 仓库内 FFDec 的命令行帮助不包含 `-header`，并且 `-dumpAS2` 只接受 `<infile>`，不支持新版 `-exportNames`。旧版流水线误将帮助文本当作 header 成功、将 `I/O error during reading` 当作成功，并在不需要的 AS3 dump 中超时。新脚本改为使用纯 Python 读取真实 SWF header、去掉不兼容参数，并检查日志错误文本。原始 FFDec tag dump 含大量 253 自定义/未知 tag，不能把它们视为已解码的游戏逻辑。
 
 **M1 尚未完成：** 2026-10-30 的 GitHub Actions run 40996027860 已确认结构解析与 FFDec tag dump 成功，但 `-dumpAS2` 和 `-linkReport` 分别在 90 秒超时，原版脚本语义仍需进一步提取。CI 的 `inventory` 成功仅代表结构清点通过，不能代表完整反编译成功。`scripts` 阶段提供独立的 ActionScript 源码导出路线。
+
+## 可追溯资源索引（下一步）
+
+```bash
+python3 tools/build_asset_index.py --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/asset-index.json
+```
+
+`asset-index.json` 包含 14,562 条原始 character 定义的分类、解压后 tag 偏移、ExportAssets 名称关联、3,065 条脚本 tag 引用，以及由 `__Packages.*_role` 严格匹配出的角色类候选。只记录 ID/名称/偏移，不包含图片、声音或反编译源码。CI 会生成该文件并做原始 SWF SHA-256/舞台参数/结构数量回归检查。候选角色类不是已验证的可选角色列表。

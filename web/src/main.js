@@ -1,6 +1,7 @@
 import { FixedStepLoop } from "./engine/FixedStepLoop.js";
 import { InputBuffer } from "./engine/InputBuffer.js";
 import { CombatRuntime } from "./engine/CombatRuntime.js";
+import { ORIGINAL_SWF_STAGE } from "./engine/OriginalStage.js";
 
 const canvas = document.querySelector("#game");
 const context = canvas.getContext("2d");
@@ -108,13 +109,14 @@ function render() {
   context.fillRect(0, 465, 960, 75);
   context.fillStyle = "#e7bd72";
   context.font = "bold 12px Segoe UI, sans-serif";
-  context.fillText("ENGINE READY — SWF DATA NOT IMPORTED", 480, 493);
+  context.fillText("ORIGINAL SWF 660x485 @ 32FPS — ASSETS NOT IMPORTED", 480, 493);
   context.fillStyle = "#aeb9ce";
   context.font = "11px Segoe UI, sans-serif";
   context.fillText("P1: A / D 移动 · J 轻击 · K 重击 · L 特殊技     P2: 方向键移动 · Num1 / Num2 / Num3 攻击", 480, 517);
 }
 
-const loop = new FixedStepLoop({ update, render });
+// Match the source SWF simulation tick; the 960x540 canvas remains a debug-only viewport.
+const loop = new FixedStepLoop({ update, render, stepMs: 1000 / ORIGINAL_SWF_STAGE.frameRate });
 loop.start();
 
 window.addEventListener("beforeunload", () => {
