@@ -7,12 +7,19 @@ on:
       - "拳皇wing1.4.swf"
       - "FFDec/**"
       - "tools/**"
+      - "tests/**"
       - "web/**"
       - "docs/**"
       - ".github/workflows/swf-analysis.yml"
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
+    inputs:
+      phase:
+        description: "inventory (default) or assets (local-only export, not published)"
+        type: choice
+        options: [inventory, assets]
+        default: inventory
 
 permissions:
   contents: read
@@ -24,7 +31,7 @@ concurrency:
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,14 +54,24 @@ jobs:
       - name: Run HTML5 engine tests
         run: npm --prefix web test
 
-      - name: Analyze original SWF with FFDec
-        run: python3 tools/analyze_swf.py --output build/swf-analysis
+      - name: Run structural SWF parser tests
+        run: python3 -m unittest discover -s tests -v
 
-      - name: Upload analysis report
+      - name: Analyze original SWF with FFDec (bounded)
+        run: python3 tools/analyze_swf.py --phase inventory --timeout 90 --output build/swf-analysis
+
+      - name: Export additional original assets (manual, not published)
+        if: github.event_name == 'workflow_dispatch' && inputs.phase == 'assets'
+        run: python3 tools/analyze_swf.py --phase assets --timeout 120 --output build/swf-analysis
+
+      - name: Upload metadata and logs only (no original assets/scripts)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: swf-analysis
-          path: build/swf-analysis/
+          path: |
+            build/swf-analysis/*.json
+            build/swf-analysis/*.log
+            build/swf-analysis/*.xml
           if-no-files-found: warn
           retention-days: 7
