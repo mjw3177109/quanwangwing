@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 import re
 
+from as2_scope_evidence import extract_function_scope_evidence
+
 FUNCTION = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(")
 # AS2 often declares methods as prototype/function-expression assignments rather
 # than "function name(...)". Keep these as lexical evidence only.
@@ -116,7 +118,11 @@ def inspect_source(raw: bytes) -> dict:
             else "function_assignment"
         )
         assigned.append({"target": target, "line": line(match.start()), "kind": kind})
+    scope_evidence = extract_function_scope_evidence(
+        masked, FUNCTION, ASSIGNED_FUNCTION, MARKERS
+    )
     return {
+        **scope_evidence,
         "assigned_functions": assigned,
         "declared_classes": [
             {"name": m.group(1), "line": line(m.start())} for m in CLASS.finditer(masked)
@@ -182,6 +188,13 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
         if is_role or is_core or is_system or is_frame:
             hints = inspect_source(raw)
             aggregate.update(hints["marker_counts"])
+            for marker_name, count in hints["marker_counts"].items():
+                attributed = hints["unscoped_marker_counts"].get(marker_name, 0) + sum(
+                    scope["marker_counts"].get(marker_name, 0)
+                    for scope in hints["function_scopes"]
+                )
+                if attributed != count:
+                    raise ValueError("Function scope marker accounting mismatch: " + rel)
             script_summaries.append({
                 "path": rel,
                 "sha256": record["sha256"],
@@ -206,6 +219,12 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
         "verified_noop_empty_count": export_index.get("verified_noop_empty_count"),
         "role_script_candidates": role_map,
         "candidate_script_count": len(script_summaries),
+        "function_scope_count_in_candidate_scripts": sum(
+            len(item["function_scopes"]) for item in script_summaries
+        ),
+        "unmatched_function_candidates_in_candidate_scripts": sum(
+            item["unmatched_function_candidates"] for item in script_summaries
+        ),
         "assigned_function_count_in_candidate_scripts": sum(
             len(item["assigned_functions"]) for item in script_summaries
         ),
@@ -219,6 +238,8 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
             "Names, paths, line numbers and lexical markers only; no ActionScript bodies are published.",
             "Method and keyword matches are heuristics, not verified gameplay semantics.",
             "Function assignment targets are lexical candidates; computed properties and regex literals may be missed.",
+            "Function scope boundaries and marker attribution are lexical heuristics, not a verified call graph.",
+            "Nested functions are attributed only their own markers; unmatched scopes remain explicitly counted.",
             "Role path matches do not prove selectability, hitboxes, damage or move timings.",
             "Source files remain on the runner and are not included in the artifact.",
         ],
@@ -243,6 +264,8 @@ def main() -> None:
         "role_scripts_present": sum(r["export_present"] for r in result["role_script_candidates"]),
         "candidate_script_count": result["candidate_script_count"],
         "assigned_function_count": result["assigned_function_count_in_candidate_scripts"],
+        "function_scope_count": result["function_scope_count_in_candidate_scripts"],
+        "unmatched_function_candidates": result["unmatched_function_candidates_in_candidate_scripts"],
         "assigned_function_kinds": result["assigned_function_kinds_in_candidate_scripts"],
         "marker_counts": result["marker_counts_in_candidate_scripts"],
     }, ensure_ascii=False))
