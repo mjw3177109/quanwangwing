@@ -48,6 +48,13 @@ class IdentifierReferencesTests(unittest.TestCase):
             self.assertEqual(target["same_script_at_or_after_count"], 1)
             self.assertEqual(target["other_script_count"], 2)
             self.assertEqual(target["syntax_counts"]["variable_declaration"], 1)
+            self.assertEqual(target["scope_context_counts"], {
+                "outside_recognized_function": 2,
+                "parameter_declaration_candidate": 1,
+                "function_body_reference": 1,
+            })
+            self.assertTrue(all(not (e["scope_candidate"] or {}).get("runtime_binding_verified")
+                                for e in target["examples"]))
             self.assertNotIn("privateName", json.dumps(result))
             self.assertNotIn('"suffix"', json.dumps(result))
             self.assertNotIn('"prefix"', json.dumps(result))
