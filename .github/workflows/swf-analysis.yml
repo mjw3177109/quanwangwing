@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: swf-analysis
+  group: swf-analysis-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

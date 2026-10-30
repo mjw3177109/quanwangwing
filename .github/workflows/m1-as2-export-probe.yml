@@ -128,6 +128,26 @@ jobs:
               raise SystemExit("Critical Role.as was not included in semantic evidence")
           PY
 
+      - name: Cross-reference verified role scripts with original sprite timelines
+        run: |
+          python3 tools/build_timeline_index.py \
+            --manifest build/as2-probe/swf-manifest.json \
+            --output build/as2-probe/timeline-index.json
+          python3 tools/build_role_crosswalk.py \
+            --asset-index build/as2-probe/asset-index.json \
+            --timeline-index build/as2-probe/timeline-index.json \
+            --semantic-index build/as2-probe/as2-semantic-index.json \
+            --output build/as2-probe/role-crosswalk.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("build/as2-probe/role-crosswalk.json").read_text(encoding="utf-8"))
+          if data["role_variant_count"] != 16:
+              raise SystemExit("Expected 16 original role variants")
+          if data["linked_sprite_timeline_count"] + data["unlinked_sprite_timeline_count"] != 16:
+              raise SystemExit("Sprite timeline accounting mismatch")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -155,5 +175,6 @@ jobs:
             build/as2-probe/summary.json
             build/as2-probe/script-export-index.json
             build/as2-probe/as2-semantic-index.json
+            build/as2-probe/role-crosswalk.json
           if-no-files-found: warn
           retention-days: 7
