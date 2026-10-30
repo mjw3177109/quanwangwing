@@ -16,9 +16,9 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: "inventory (default), scripts, or assets (local-only export)"
+        description: "inventory (default), deep diagnostics, scripts, or assets"
         type: choice
-        options: [inventory, scripts, assets]
+        options: [inventory, deep, scripts, assets]
         default: inventory
 
 permissions:
@@ -59,6 +59,10 @@ jobs:
 
       - name: Analyze original SWF with FFDec (bounded)
         run: python3 tools/analyze_swf.py --phase inventory --timeout 90 --output build/swf-analysis
+
+      - name: Run expensive AS1/AS2 and link diagnostics (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.phase == 'deep'
+        run: python3 tools/analyze_swf.py --phase deep --timeout 120 --output build/swf-analysis
 
       - name: Export ActionScript sources (manual, not published)
         if: github.event_name == 'workflow_dispatch' && inputs.phase == 'scripts'

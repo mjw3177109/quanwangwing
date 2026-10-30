@@ -19,11 +19,11 @@
 4. 启动预览：python -m http.server 8000 --directory web
 5. 浏览器打开 http://localhost:8000
 
-分析脚本会输出 SWF 头信息、标签清单、AS1/AS2/AS3 脚本转储、链接报告及资源导出。不要覆盖原始 SWF。
+默认 `inventory` 仅生成真实 SWF 头、全部 tag/时间轴/角色 ID 清单及 FFDec tag dump；耗时较长的 AS1/AS2 诊断、ActionScript 源码和素材导出分别使用 `--phase deep`、`--phase scripts`、`--phase assets`。详见 `docs/SWF_INVENTORY.md`。不要覆盖原始 SWF。
 
 ## GitHub Actions
 
-- push 到 main、手动触发或每小时第 17 分钟会执行 SWF 分析与 HTML5 单元测试。
+- push 到 main、手动触发或每小时第 17 分钟会执行 SWF 结构清点与 HTML5 单元测试；不代表完整 ActionScript 已还原。
 - 导出结果作为 7 天保留期的 Actions artifact，不自动提交大体积导出资源。
 - 自动任务失败时先修复根因，不以“任务启动”代替“分析成功”。
 

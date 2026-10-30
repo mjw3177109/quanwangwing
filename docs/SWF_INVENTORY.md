@@ -16,14 +16,16 @@ python3 tools/swf_inventory.py --output build/swf-analysis/swf-manifest.json
 ```bash
 java -version  # 必须是 1.8
 python3 tools/analyze_swf.py --phase inventory --timeout 90
+python3 tools/analyze_swf.py --phase deep --timeout 120
 python3 tools/analyze_swf.py --phase scripts --timeout 120
 python3 tools/analyze_swf.py --phase assets --timeout 120
 ```
 
-- `inventory`：运行 FFDec tag dump、AS1/AS2 清单、按实际脚本类型选择 AS3 清单、link report。每条命令单独限时，失败保留已生成的报告和日志。
+- `inventory`：运行 FFDec tag dump 与纯 Python 完整结构清单（CI 必需检查）。每条命令单独限时，失败保留已生成的报告和日志。
+- `deep`：运行 FFDec AS1/AS2/AS3 脚本清单和 link report。已观察到 FFDec 18.0.0 对此 SWF 的 `-dumpAS2` 和 `-linkReport` 可能各超时 90 秒；作为单独诊断，不能宣称完成。
 - `scripts`：导出 ActionScript 近似源码，可能耗时较长；可在本地单独运行。
 - `assets`：导出 image/shape/sound/font/text/binaryData/symbolClass，耗时较长；可在本地单独运行。
-- `all`：同时执行以上三个阶段。
+- `all`：同时执行以上四个阶段。
 - `build/swf-analysis/summary.json`：各步骤 exit code、耗时、超时状态、导出数量和完整性判定。
 - `build/swf-analysis/exports/`：本地原版资源与脚本，不自动提交。
 
@@ -36,3 +38,5 @@ GitHub Actions 定时执行 `inventory`；原版素材和完整反编译脚本�
 ## 已确认的旧版 FFDec 差异（2026-10-30）
 
 仓库内 FFDec 的命令行帮助不包含 `-header`，并且 `-dumpAS2` 只接受 `<infile>`，不支持新版 `-exportNames`。旧版流水线误将帮助文本当作 header 成功、将 `I/O error during reading` 当作成功，并在不需要的 AS3 dump 中超时。新脚本改为使用纯 Python 读取真实 SWF header、去掉不兼容参数，并检查日志错误文本。原始 FFDec tag dump 含大量 253 自定义/未知 tag，不能把它们视为已解码的游戏逻辑。
+
+**M1 尚未完成：** 2026-10-30 的 GitHub Actions run 40996027860 已确认结构解析与 FFDec tag dump 成功，但 `-dumpAS2` 和 `-linkReport` 分别在 90 秒超时，原版脚本语义仍需进一步提取。CI 的 `inventory` 成功仅代表结构清点通过，不能代表完整反编译成功。`scripts` 阶段提供独立的 ActionScript 源码导出路线。

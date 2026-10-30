@@ -81,7 +81,7 @@ def main() -> int:
     parser.add_argument("--swf", type=Path, default=SWF)
     parser.add_argument("--ffdec", type=Path, default=FFDEC)
     parser.add_argument("--output", type=Path, default=ROOT / "build/swf-analysis")
-    parser.add_argument("--phase", choices=("inventory", "scripts", "assets", "all"),
+    parser.add_argument("--phase", choices=("inventory", "deep", "scripts", "assets", "all"),
                         default="inventory")
     parser.add_argument("--timeout", type=int, default=90)
     args = parser.parse_args()
@@ -108,9 +108,15 @@ def main() -> int:
     commands = {}
     exports = out / "exports"
     if args.phase in ("inventory", "all"):
+        commands["tags"] = run_command(
+            "tags", ffdec, ["-dumpSWF", str(swf)], out, args.timeout
+        )
+
+    # FFDec 18.0.0 can stall on -dumpAS2 and -linkReport for this 22.9 MB
+    # uncompressed AS2 SWF. Keep diagnostics explicit and separately bounded,
+    # rather than making the baseline structural check falsely claim success.
+    if args.phase in ("deep", "all"):
         specs = [
-            ("tags", ["-dumpSWF", str(swf)]),
-            # The bundled older FFDec accepts only -dumpAS2 <swf>.
             ("as1_as2", ["-dumpAS2", str(swf)]),
             ("link_report", [
                 "-linkReport", "-outfile", str(out / "link-report.xml"), str(swf)
@@ -145,8 +151,9 @@ def main() -> int:
         for path in exports.rglob("*"):
             if path.is_file():
                 counts[path.suffix.lower() or "[no extension]"] += 1
-    required = ["tags", "as1_as2", "link_report"] + (["as3"] if has_as3 else [])
-    inventory_ok = all(commands.get(k, {}).get("ok") for k in required) if args.phase in ("inventory", "all") else None
+    inventory_ok = commands.get("tags", {}).get("ok") if args.phase in ("inventory", "all") else None
+    deep_required = ["as1_as2", "link_report"] + (["as3"] if has_as3 else [])
+    deep_ok = all(commands.get(k, {}).get("ok") for k in deep_required) if args.phase in ("deep", "all") else None
     scripts_ok = commands.get("script_export", {}).get("ok") if args.phase in ("scripts", "all") else None
     assets_ok = commands.get("asset_export", {}).get("ok") if args.phase in ("assets", "all") else None
     summary = {
@@ -159,6 +166,7 @@ def main() -> int:
         "as3_tag_present": has_as3,
         "unknown_tag_253": manifest["tag_counts_by_code"].get("253", 0),
         "commands": commands, "inventory_complete": inventory_ok,
+        "deep_diagnostics_complete": deep_ok,
         "scripts_complete": scripts_ok, "assets_complete": assets_ok,
         "exported_file_count": sum(counts.values()),
         "exported_extensions": dict(sorted(counts.items())),
@@ -168,10 +176,11 @@ def main() -> int:
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     print("[RESULT] " + json.dumps({
-        "inventory_complete": inventory_ok, "scripts_complete": scripts_ok,
+        "inventory_complete": inventory_ok, "deep_diagnostics_complete": deep_ok,
+        "scripts_complete": scripts_ok,
         "assets_complete": assets_ok, "exported_files": sum(counts.values()),
     }), flush=True)
-    return 2 if any(x is False for x in (inventory_ok, scripts_ok, assets_ok)) else 0
+    return 2 if any(x is False for x in (inventory_ok, deep_ok, scripts_ok, assets_ok)) else 0
 
 
 if __name__ == "__main__":
