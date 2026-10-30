@@ -36,19 +36,37 @@ jobs:
       - name: Validate export count without publishing source
         run: |
           python3 - <<'PY'
+          import hashlib
           import json
           from pathlib import Path
           root = Path("build/as2-probe")
           summary = json.loads((root / "summary.json").read_text(encoding="utf-8"))
-          files = [p for p in (root / "exports" / "scripts").rglob("*") if p.is_file()]
-          suffixes = {}
-          for path in files:
-              suffixes[path.suffix.lower()] = suffixes.get(path.suffix.lower(), 0) + 1
+          export_root = root / "exports" / "scripts"
+          files = sorted(p for p in export_root.rglob("*") if p.is_file())
+          records = [
+              {"path": p.relative_to(export_root).as_posix(),
+               "size_bytes": p.stat().st_size,
+               "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+              for p in files
+          ]
+          empty = [r["path"] for r in records if r["size_bytes"] == 0]
+          index = {
+              "source_sha256": summary["source"]["sha256"],
+              "script_count": len(records),
+              "total_bytes": sum(r["size_bytes"] for r in records),
+              "empty_count": len(empty),
+              "files": records,
+              "note": "Metadata hashes only; no original AS2 source is published."
+          }
+          (root / "script-export-index.json").write_text(
+              json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
           print(json.dumps({"scripts_complete": summary["scripts_complete"],
                             "exported_file_count": len(files),
-                            "suffix_counts": suffixes}, ensure_ascii=False))
-          if not summary["scripts_complete"] or not files:
-              raise SystemExit("FFDec script export incomplete or empty")
+                            "empty_count": len(empty),
+                            "total_bytes": index["total_bytes"]}, ensure_ascii=False))
+          if not summary["scripts_complete"] or len(files) != 7054 or empty:
+              raise SystemExit("Expected 7054 non-empty AS2 exports from verified original SWF")
           PY
 
       - name: Report bounded error metadata only
@@ -74,6 +92,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: as2-probe-metadata
-          path: build/as2-probe/summary.json
+          path: |
+            build/as2-probe/summary.json
+            build/as2-probe/script-export-index.json
           if-no-files-found: warn
           retention-days: 7
