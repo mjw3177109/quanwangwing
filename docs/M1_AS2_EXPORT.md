@@ -7,7 +7,7 @@
 - GitHub Actions run 41001157724（https://github.com/mjw3177109/quanwangwing/actions/runs/41001157724）使用 Java 1.8 和仓库随附 FFDec 18.0.0，执行独立 scripts 阶段。
 - FFDec script_export 退出码 0，未超时，耗时 46.8 秒；报告 scripts_complete=true，无已识别错误标记。
 - 导出 7,054 个 .as 文件，全部保留在 Actions 临时 runner，没有上传源代码、音频或图片。
-- 第二次严格检查 run 41001372972 发现 7,054 个导出中有 126 个零字节 .as 文件。逐项交叉核对原版 SWF metadata 与 FFDec tag dump，126 个均对应唯一的 1 字节 DoAction tag，且 payload 为 0x00（ActionEnd），是可解释的空操作脚本，不应简单认定为反编译失败。修复后的 CI 将直接验证原始解压字节与文件名/帧号关联，要求不存在无法解释的空文件。
+- 第二次严格检查 run 41001372972 发现 7,054 个导出中有 126 个零字节 .as 文件。逐项交叉核对原版 SWF metadata 与 FFDec tag dump，126 个均对应唯一的 1 字节 DoAction tag，且 payload 为 0x00（ActionEnd），是可解释的空操作脚本，不应简单认定为反编译失败。修复后的 CI run 41001614469（https://github.com/mjw3177109/quanwangwing/actions/runs/41001614469）已直接验证原始解压字节与文件名/帧号关联：126 个空文件全部为 ActionEnd-only，无法解释的空文件为 0。7,054 个文件总计 41,054,213 字节，逐文件 SHA-256 与长度保存在 metadata-only artifact 中。
 
 ## 未完成
 
