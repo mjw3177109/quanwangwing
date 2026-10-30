@@ -13,14 +13,14 @@
 - [x] 检查仓库、原始 SWF、FFDec 文件。
 - [x] 建立 Java 8 锁定的自动分析入口。
 - [x] 建立 HTML5 引擎骨架与 Node 测试。
-- [ ] 在 GitHub Actions 上成功解析原始 SWF 并保存 artifact。
+- [x] 在 GitHub Actions 上成功解析原始 SWF 结构并保存 metadata artifact（完整脚本/素材导出另行验收）。
 
 ### M1 — SWF 结构清点
-- [ ] 确认 SWF signature、版本、舞台宽高、帧率、总帧数。
-- [ ] 导出并统计所有 SWF tags。
+- [x] 确认 SWF signature、版本、舞台宽高、帧率、总帧数（CWS v9，660×485，32 FPS，39 帧）。
+- [x] 导出并统计所有 SWF tags（含 Sprite End 为 98,210；FFDec 展示 96,435）。
 - [ ] 识别 AS1/AS2/AS3 脚本数量、入口帧与关键函数。
-- [ ] 建立 characterId / symbolClass / sprite / button / sound 映射。
-- [ ] 生成可追溯的资源 manifest。
+- [ ] 完成 characterId / symbolClass / sprite / button / sound 的语义映射（已生成 14,562 个定义与 715 个 ExportAssets 名称的索引，仍需解析实际引用和动作）。
+- [x] 生成可追溯的资源 metadata manifest 与 asset-index（无原版素材字节）。
 
 ### M2 — 角色与动作数据
 - [ ] 识别全部可选角色、隐藏角色、场景和 UI 状态。
@@ -61,4 +61,12 @@
 
 ## 当前已知限制
 
-当前仓库尚未生成 SWF 分析报告。HTML5 预览使用测试方块和通用占位招式，只用于验证引擎骨架，不代表原版角色或原版战斗数值。
+已在 GitHub Actions 通过结构清点与索引测试，详见 `docs/SWF_TAG_BASELINE.md` 和 `docs/SWF_INVENTORY.md`。原始 SWF SHA-256 为 `cf7d7225b488206b7e19914d2e09ac37aab3f1618a1b32d84f6d8423e7a4eebb`。FFDec 18.0.0 对此 SWF 的 `-dumpAS2`、`-linkReport` 曾分别超时 90 秒，脚本源码导出、角色/招式语义及未知 tag 253 的作用仍未验收。已发现 Kyo、Mai、Iori、K、Kula、Ryo、Moriya、Orochi 的角色类候选，不能当作已确认可选角色表。HTML5 引擎已锁定原版 32 FPS 逻辑时钟，但当前 960×540 画布与测试方块仍是调试占位，尚未按原版 660×485 完成视觉/战斗 1:1。
+
+## 下一轮优先任务
+
+1. 以 `--phase scripts` 独立运行 FFDec 18.0.0 的 ActionScript 源码导出，验证 7,054 条脚本导出项是否完整；保存失败脚本 ID 与日志，不将源码公开上传。
+2. 从导出脚本中提取类名、动作入口、键位与战斗判定关系，建立带来源的角色/动作/判定数据表。
+3. 检查 Unknown tag 253（2,729 条）与 255（1 条）的实际作用；保留原始字节偏移，不假设它们可以安全丢弃。
+4. 按原版 660×485 舞台尺寸恢复时间轴与 UI；把当前 960×540 调试画布替换为真实舞台渲染。
+5. 导出并校验原版图像/音效的数量、引用与时间轴触发位置；素材仍留在本地，不自动发布。
