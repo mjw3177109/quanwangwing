@@ -70,3 +70,9 @@
 3. 检查 Unknown tag 253（2,729 条）与 255（1 条）的实际作用；保留原始字节偏移，不假设它们可以安全丢弃。
 4. 按原版 660×485 舞台尺寸恢复时间轴与 UI；把当前 960×540 调试画布替换为真实舞台渲染。
 5. 导出并校验原版图像/音效的数量、引用与时间轴触发位置；素材仍留在本地，不自动发布。
+
+## M1 增量：逐帧引用与未知标签邻接证据
+
+运行 `python3 tools/build_timeline_index.py --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/timeline-index.json`。
+
+逐时间轴记录 PlaceObject/PlaceObject2/PlaceObject3 的 characterId 与 depth、移除事件、FrameLabel、StartSound 的 soundId、DoInitAction 的目标 spriteId、脚本所在帧与解压后偏移。未知 Tag 253/255 只统计同一时间轴下一标签，不推断含义。该索引不包含原版位图、音效或 ActionScript 正文，也不能证明招式和碰撞箱已移植。
