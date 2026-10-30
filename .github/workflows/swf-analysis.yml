@@ -134,6 +134,28 @@ jobs:
               raise SystemExit("Crosswalk pair accounting mismatch")
           PY
 
+      - name: Build byte-verified display depth snapshots (metadata only)
+        run: |
+          python3 tools/build_display_depth_evidence.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --output build/swf-analysis/display-depth-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          m = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          d = json.loads((root / "display-depth-evidence.json").read_text(encoding="utf-8"))
+          if d["source_sha256"] != m["source"]["sha256"]:
+              raise SystemExit("Display-depth provenance mismatch")
+          if d["show_frame_count"] != m["tag_counts_by_code"].get("1", 0):
+              raise SystemExit("Display-depth ShowFrame accounting mismatch")
+          if d["display_event_count"] != sum(m["tag_counts_by_code"].get(str(k), 0) for k in (4, 5, 26, 28, 70)):
+              raise SystemExit("Display-depth event accounting mismatch")
+          if d["timeline_count"] != len(d["timelines"]):
+              raise SystemExit("Display-depth timeline accounting mismatch")
+          PY
+
       - name: Validate unknown tag 253/255 headers and produce metadata-only evidence
         run: |
           python3 tools/build_unknown_tag_evidence.py \
