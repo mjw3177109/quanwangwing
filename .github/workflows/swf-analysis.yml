@@ -2,7 +2,7 @@ name: SWF analysis and HTML5 checks
 
 on:
   push:
-    branches: [main, feature/html5-rebuild-foundation]
+    branches: [main]
     paths:
       - "拳皇wing1.4.swf"
       - "FFDec/**"
@@ -11,6 +11,8 @@ on:
       - "web/**"
       - "docs/**"
       - ".github/workflows/swf-analysis.yml"
+  pull_request:
+    branches: [main]
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
