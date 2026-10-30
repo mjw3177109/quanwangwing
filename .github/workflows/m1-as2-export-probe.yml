@@ -148,6 +148,24 @@ jobs:
               raise SystemExit("Sprite timeline accounting mismatch")
           PY
 
+      - name: Trace direct role placements and DoInitAction targets
+        run: |
+          python3 tools/build_role_reference_evidence.py \
+            --crosswalk build/as2-probe/role-crosswalk.json \
+            --timeline-index build/as2-probe/timeline-index.json \
+            --output build/as2-probe/role-reference-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("build/as2-probe/role-reference-evidence.json").read_text(encoding="utf-8"))
+          if d["role_variant_count"] != 16:
+              raise SystemExit("Expected 16 verified role variants")
+          if d["direct_placement_count"] != sum(r["direct_placement_count"] for r in d["roles"]):
+              raise SystemExit("Placement accounting mismatch")
+          if d["do_init_action_target_count"] != sum(r["do_init_action_target_count"] for r in d["roles"]):
+              raise SystemExit("Initialization accounting mismatch")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -176,5 +194,6 @@ jobs:
             build/as2-probe/script-export-index.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/role-crosswalk.json
+            build/as2-probe/role-reference-evidence.json
           if-no-files-found: warn
           retention-days: 7
