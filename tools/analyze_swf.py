@@ -130,7 +130,7 @@ def main() -> int:
     if args.phase in ("scripts", "all"):
         commands["script_export"] = run_command(
             "script_export", ffdec, [
-                "-timeout", "5", "-exportTimeout", "600",
+                "-timeout", "60", "-exportTimeout", "600",
                 "-format", "script:as", "-export", "script",
                 str(exports / "scripts"), str(swf),
             ], out, min(900, args.timeout * 8),

@@ -2,7 +2,7 @@ name: M1 AS2 export diagnostic (source stays on runner)
 
 on:
   push:
-    branches: [feature/m1-as2-export-probe]
+    branches: [feature/m1-as2-export-probe, feature/m1-as2-semantic-map]
   workflow_dispatch:
 
 permissions:
@@ -102,6 +102,27 @@ jobs:
               raise SystemExit("AS2 exports incomplete or unexplained empty files remain")
           PY
 
+      - name: Build SWF ExportAssets candidate index
+        run: python3 tools/build_asset_index.py --manifest build/as2-probe/swf-manifest.json --output build/as2-probe/asset-index.json
+
+      - name: Verify AS2 sources and derive metadata-only semantic entry map
+        run: |
+          python3 tools/build_as2_semantic_index.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --asset-index build/as2-probe/asset-index.json \
+            --output build/as2-probe/as2-semantic-index.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("build/as2-probe/as2-semantic-index.json").read_text(encoding="utf-8"))
+          roles = d["role_script_candidates"]
+          if len(roles) != 16 or any(not r["export_present"] for r in roles):
+              raise SystemExit("Expected 16 original base/Type2 role candidate scripts")
+          if d["verified_script_count"] != 7054:
+              raise SystemExit("AS2 export count regression")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -128,5 +149,6 @@ jobs:
           path: |
             build/as2-probe/summary.json
             build/as2-probe/script-export-index.json
+            build/as2-probe/as2-semantic-index.json
           if-no-files-found: warn
           retention-days: 7
