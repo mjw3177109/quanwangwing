@@ -210,6 +210,34 @@ jobs:
               raise SystemExit("Concatenation component accounting mismatch")
           PY
 
+      - name: Trace hashed identifiers across verified AS2 scripts
+        run: |
+          python3 tools/build_attach_identifier_references.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --provenance build/as2-probe/attach-argument-provenance.json \
+            --output build/as2-probe/attach-identifier-references.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("build/as2-probe/attach-identifier-references.json").read_text(encoding="utf-8"))
+          p = json.loads(Path("build/as2-probe/attach-argument-provenance.json").read_text(encoding="utf-8"))
+          expected = {c["identifier_sha256"]
+                      for e in p["events"]
+                      for c in e.get("concatenation_components", [])
+                      if c.get("kind") == "identifier"}
+          expected.update(e["identifier_sha256"] for e in p["events"]
+                          if e["argument_shape"] == "identifier")
+          if d["verified_script_count"] != 7054 or d["identifier_target_count"] != len(expected):
+              raise SystemExit("AS2 identifier reference coverage mismatch")
+          if {t["identifier_sha256"] for t in d["targets"]} != expected:
+              raise SystemExit("Hashed identifier target mismatch")
+          if sum(t["occurrence_count"] for t in d["targets"]) != d["identifier_occurrence_count"]:
+              raise SystemExit("Identifier occurrence accounting mismatch")
+          if any(t["occurrence_count"] < 1 or t["runtime_binding_verified"] for t in d["targets"]):
+              raise SystemExit("Unverified identifier reference incorrectly classified")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -241,5 +269,6 @@ jobs:
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
             build/as2-probe/attach-argument-provenance.json
+            build/as2-probe/attach-identifier-references.json
           if-no-files-found: warn
           retention-days: 7
