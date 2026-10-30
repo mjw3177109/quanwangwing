@@ -68,6 +68,13 @@ jobs:
       - name: Build timeline placement, script, sound and frame-label reference map
         run: python3 tools/build_timeline_index.py --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/timeline-index.json
 
+      - name: Validate unknown tag 253/255 headers and produce metadata-only evidence
+        run: |
+          python3 tools/build_unknown_tag_evidence.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --output build/swf-analysis/unknown-tag-evidence.json
+
       - name: Run expensive AS1/AS2 and link diagnostics (manual)
         if: github.event_name == 'workflow_dispatch' && inputs.phase == 'deep'
         run: python3 tools/analyze_swf.py --phase deep --timeout 120 --output build/swf-analysis
