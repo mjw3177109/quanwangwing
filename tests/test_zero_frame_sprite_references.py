@@ -74,7 +74,14 @@ class ZeroFrameSpriteReferencesTests(unittest.TestCase):
              "sprite_frame_count": 0, "offset_uncompressed": 111},
             {"timeline": "sprite:8", "tag_code": 0, "offset_uncompressed": 113},
         ])
-        r = report(m)
+        depth = depth_for(m)
+        depth["timelines"].append({
+            "timeline": "sprite:8", "declared_frames": 0,
+            "observed_show_frames": 0, "frame_count_mismatch": False, "frames": [],
+        })
+        depth["timeline_count"] += 1
+        audit = build_frame_count_audit(m, depth)
+        r = build_zero_frame_sprite_references(m, build_frame_tail_evidence(m, audit))
         self.assertEqual(r["zero_show_frame_sprite_count"], 2)
         self.assertEqual(r["zero_sprite_declared_frame_counts"], {"0": 1, "1": 1})
         self.assertEqual(r["zero_sprites_in_frame_tail_mismatches"], 1)
