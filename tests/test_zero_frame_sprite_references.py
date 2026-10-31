@@ -69,6 +69,7 @@ class ZeroFrameSpriteReferencesTests(unittest.TestCase):
 
     def test_mixed_declared_zero_and_one_sprite_coverage(self):
         m = zero_fixture()
+        next(t for t in m["tags"] if t["tag_code"] == 39)["sprite_frame_count"] = 1
         main_end = next(i for i, t in enumerate(m["tags"])
                         if t["timeline"] == "main" and t["tag_code"] == 0)
         m["tags"][main_end:main_end] = [
