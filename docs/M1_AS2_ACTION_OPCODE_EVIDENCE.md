@@ -24,3 +24,9 @@ python3 tools/build_as2_action_opcode_evidence.py --swf 拳皇wing1.4.swf --mani
 对于顶层 ActionEnd 后长度**恰好 11 字节**的尾部，增加仅由 `0`（字节值为零）和 `x`（非零）组成的 11 位掩码直方图、零字节数量直方图，以及按 DoAction/DoInitAction 标签类型的分布。不会输出非零字节的实际值、ActionScript、字节码正文或原版素材。
 
 这只是结构性聚类：相同零位掩码不等于相同内容，也不代表它们是相同函数、可执行 ActionRecord、填充或特定游戏事件。新增 CI 校验三个直方图的计数必须分别与既有尾部长度直方图中的 11 字节样本数量闭合。后续应结合受限 FFDec 导出与 SWF 结构规范确认其语义。
+
+## ActionEnd 后 11 字节的二次 ActionRecord 边界探针
+
+对 11 字节尾部**从首个顶层 ActionEnd 之后**尝试一次有界 ActionRecord 语法步进，统计四类候选：`terminated_at_end`、`terminated_with_remainder`、`no_terminator`、`invalid_record_boundary`。另统计语法步进成功样本的候选记录数量分布。测试及 Actions 验证各分类数量覆盖全部 11 字节尾部、有效样本记录数直方图闭合。
+
+这不是对尾部的执行、反编译或语义认定：任意字节可能碰巧符合 ActionRecord 边界，首个 ActionEnd 后的字节也可能属于非脚本结构。不会导出原始字节、操作码序列、脚本或素材。只有在与受限 FFDec 结果及 SWF 规范交叉验证后，才能解释这些结构候选。
