@@ -341,6 +341,30 @@ jobs:
               raise SystemExit("Unverified dynamic binding classified as verified")
           PY
 
+      - name: Audit lexical proximity of unresolved attachMovie identifiers
+        run: |
+          python3 tools/build_dynamic_attach_scope_pairs.py \
+            --references build/as2-probe/attach-identifier-references.json \
+            --joined build/as2-probe/dynamic-attach-reference-join.json \
+            --output build/as2-probe/dynamic-attach-scope-pairs.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("build/as2-probe")
+          d = json.loads((p / "dynamic-attach-scope-pairs.json").read_text(encoding="utf-8"))
+          r = json.loads((p / "attach-identifier-references.json").read_text(encoding="utf-8"))
+          if d["identifier_target_count"] != r["identifier_target_count"]:
+              raise SystemExit("Scope-pair target coverage mismatch")
+          if d["identifier_occurrence_count"] != r["identifier_occurrence_count"]:
+              raise SystemExit("Scope-pair occurrence coverage mismatch")
+          if not (d["shared_scripts_with_gap_at_most_2"] <= d["shared_scripts_with_gap_at_most_5"] <= d["shared_script_count"]):
+              raise SystemExit("Scope-pair distance accounting mismatch")
+          if len(d["pairs"]) != d["shared_script_count"]:
+              raise SystemExit("Scope-pair row accounting mismatch")
+          if any(row["runtime_binding_verified"] for row in d["pairs"]):
+              raise SystemExit("Unverified runtime binding claim")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -376,5 +400,6 @@ jobs:
             build/as2-probe/attach-argument-provenance.json
             build/as2-probe/attach-identifier-references.json
             build/as2-probe/dynamic-attach-reference-join.json
+            build/as2-probe/dynamic-attach-scope-pairs.json
           if-no-files-found: warn
           retention-days: 7
