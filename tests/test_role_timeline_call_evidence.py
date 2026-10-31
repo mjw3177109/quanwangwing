@@ -32,6 +32,36 @@ function gotoAndPlay(n) { }
         self.assertEqual(calls[0]["argument_kind"], "string_literal")
         self.assertEqual(calls[1]["literal_frame_candidate"], 0)
 
+    def test_receiver_shape_classes_without_leaking_names(self):
+        source = (b'this.gotoAndPlay(1); _root.gotoAndStop(2); '
+                  b'_parent.gotoAndPlay(3); clip.gotoAndPlay(4); '
+                  b'this.child.gotoAndPlay(5); getClip().gotoAndStop(6); '
+                  b'gotoAndPlay(7); this["child"].gotoAndStop(8);')
+        calls = scan_calls(source)
+        self.assertEqual([c["receiver_kind"] for c in calls], [
+            "this_direct", "root_direct", "parent_direct", "identifier_direct",
+            "member_chain_or_expression", "computed_or_expression",
+            "unqualified_or_unresolved", "computed_or_expression",
+        ])
+        self.assertNotIn("clip", str(calls))
+        self.assertNotIn("child", str(calls))
+
+    def test_receiver_ignores_comments_and_quoted_methods(self):
+        calls = scan_calls(b'// clip.gotoAndPlay(1)\n'
+                           b'var s = "clip.gotoAndStop(2)"; '
+                           b'this.gotoAndStop("idle");')
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["receiver_kind"], "this_direct")
+
+    def test_receiver_aggregate_is_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            export, crosswalk, _ = self.fixture(root)
+            result = build_evidence(root, export, crosswalk)
+            self.assertEqual(sum(result["receiver_kind_counts"].values()),
+                             result["call_candidate_count"])
+            self.assertEqual(result["receiver_kind_counts"]["this_direct"], 2)
+
     def fixture(self, root):
         path = "scripts/__Packages/Kyo_role.as"
         source = b"this.gotoAndPlay(5); this.gotoAndStop(label);"
