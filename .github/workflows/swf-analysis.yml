@@ -158,6 +158,16 @@ jobs:
           if sum(d["trailing_length_11_candidate_record_count_histogram"].values()) != (
                   eleven - walk["invalid_record_boundary"]):
               raise SystemExit("Length-11 candidate record histogram mismatch")
+          shapes = d["trailing_length_11_candidate_record_shape_histogram"]
+          if sum(shapes.values()) != walk["terminated_at_end"]:
+              raise SystemExit("Length-11 terminated record-shape coverage mismatch")
+          if any(not shape or any(
+                  not (part == "S" or (part.startswith("L") and part[1:].isdigit()))
+                  for part in shape.split(">")) for shape in shapes):
+              raise SystemExit("Invalid length-11 record-shape metadata")
+          if sum(shapes.values()) > d["trailing_length_11_candidate_record_count_histogram"].get("2", 0) and all(
+                  len(shape.split(">")) == 2 for shape in shapes):
+              raise SystemExit("Length-11 two-record shape/count mismatch")
           PY
 
       - name: Cross-reference original StartSound and script containers by timeline/frame
