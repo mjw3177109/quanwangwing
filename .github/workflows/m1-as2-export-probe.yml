@@ -261,6 +261,32 @@ jobs:
               raise SystemExit("Role call scope unique interval mismatch")
           PY
 
+      - name: Cross-check role function assignment targets and lexical receivers (metadata only)
+        run: |
+          python3 tools/build_role_scope_target_evidence.py \
+            --role-crosswalk build/as2-probe/role-crosswalk.json \
+            --call-scope-join build/as2-probe/role-call-scope-join.json \
+            --output build/as2-probe/role-scope-target-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "role-scope-target-evidence.json").read_text(encoding="utf-8"))
+          j = json.loads((root / "role-call-scope-join.json").read_text(encoding="utf-8"))
+          if d["source_sha256"] != j["source_sha256"]:
+              raise SystemExit("Role target source provenance mismatch")
+          if d["role_variant_count"] != j["role_variant_count"] or d["call_candidate_count"] != j["call_candidate_count"]:
+              raise SystemExit("Role target coverage mismatch")
+          if sum(d["scope_target_kind_counts"].values()) != d["call_candidate_count"]:
+              raise SystemExit("Role target category accounting mismatch")
+          if sum(p["count"] for p in d["receiver_target_pair_counts"]) != d["call_candidate_count"]:
+              raise SystemExit("Role target receiver pair accounting mismatch")
+          if sum(len(r["calls"]) for r in d["roles"]) != d["call_candidate_count"]:
+              raise SystemExit("Role target callsite row mismatch")
+          if any(c["runtime_binding_verified"] for r in d["roles"] for c in r["calls"]):
+              raise SystemExit("Unverified MovieClip binding claimed as verified")
+          PY
+
       - name: Trace direct role placements and DoInitAction targets
         run: |
           python3 tools/build_role_reference_evidence.py \
@@ -505,6 +531,7 @@ jobs:
             build/as2-probe/role-crosswalk.json
             build/as2-probe/role-timeline-call-evidence.json
             build/as2-probe/role-call-scope-join.json
+            build/as2-probe/role-scope-target-evidence.json
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
             build/as2-probe/attach-argument-provenance.json
