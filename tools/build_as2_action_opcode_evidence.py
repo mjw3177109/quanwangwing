@@ -68,6 +68,21 @@ def zero_position_mask(body, trailing):
     return "".join("0" if value == 0 else "x" for value in body[-trailing:]) if trailing else ""
 
 
+def walk_action_tail_candidate(body, trailing):
+    """Try a bounded ActionRecord walk after the FIRST ActionEnd; not semantic proof."""
+    if trailing < 0 or trailing > len(body):
+        raise ValueError("Invalid trailing byte count")
+    if not trailing:
+        return "none", 0
+    try:
+        counts, terminated, remainder = _records(body[-trailing:])
+    except ValueError:
+        return "invalid_record_boundary", 0
+    if terminated:
+        return ("terminated_at_end" if remainder == 0 else "terminated_with_remainder"), sum(counts.values())
+    return "no_terminator", sum(counts.values())
+
+
 def build_action_opcode_evidence(manifest, data):
     source = manifest.get("source", {}).get("sha256")
     if not isinstance(source, str) or len(source) != 64:
@@ -87,6 +102,8 @@ def build_action_opcode_evidence(manifest, data):
     tail_11_masks = Counter()
     tail_11_zero_counts = Counter()
     tail_11_tag_counts = Counter()
+    tail_11_walk_status = Counter()
+    tail_11_walk_record_counts = Counter()
     entries = []
     for tag, script in zip(selected, expected):
         for field in ("tag_code", "timeline", "frame", "offset_uncompressed", "length"):
@@ -113,6 +130,10 @@ def build_action_opcode_evidence(manifest, data):
             tail_11_masks[mask] += 1
             tail_11_zero_counts[mask.count("0")] += 1
             tail_11_tag_counts[tag["tag_code"]] += 1
+            walk_status, walk_count = walk_action_tail_candidate(body, trailing)
+            tail_11_walk_status[walk_status] += 1
+            if walk_status != "invalid_record_boundary":
+                tail_11_walk_record_counts[walk_count] += 1
         entries.append({"timeline": tag["timeline"], "frame_zero_based": tag["frame"],
                         "tag_code": tag["tag_code"],
                         "offset_uncompressed": tag["offset_uncompressed"],
@@ -138,6 +159,9 @@ def build_action_opcode_evidence(manifest, data):
             "trailing_length_11_zero_position_masks": {mask: tail_11_masks[mask] for mask in sorted(tail_11_masks)},
             "trailing_length_11_zero_count_histogram": {str(n): tail_11_zero_counts[n] for n in sorted(tail_11_zero_counts)},
             "trailing_length_11_by_tag_code": {str(n): tail_11_tag_counts[n] for n in sorted(tail_11_tag_counts)},
+            "trailing_length_11_candidate_walk_status": {name: tail_11_walk_status[name] for name in
+                ("terminated_at_end", "terminated_with_remainder", "no_terminator", "invalid_record_boundary")},
+            "trailing_length_11_candidate_record_count_histogram": {str(n): tail_11_walk_record_counts[n] for n in sorted(tail_11_walk_record_counts)},
             "entries": entries,
             "limitations": ["Only top-level legacy action records are counted; nested function bodies are not decoded.",
                             "Opcode 0x9B/0x8E is a lexical bytecode function record, not a verified callable function.",
@@ -145,6 +169,7 @@ def build_action_opcode_evidence(manifest, data):
                             "Zero-only tails are padding candidates, not proven harmless padding.",
                             "Nonzero/mixed tails are not parsed as independent action streams.",
                             "Length-11 masks reveal zero/nonzero positions only, not actual byte values or semantics.",
+                            "Secondary ActionRecord walks after the first ActionEnd are syntactic probes only; arbitrary bytes can mimic valid records.",
                             "No bytecode, function names, ActionScript, image or audio bytes are emitted."]}
 
 
