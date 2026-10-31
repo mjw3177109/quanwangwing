@@ -140,6 +140,15 @@ jobs:
               raise SystemExit("Legacy action trailing container count mismatch")
           if d["containers_with_trailing_bytes"] != sum(d["trailing_length_histogram"].values()):
               raise SystemExit("Legacy action trailing length histogram mismatch")
+          eleven = d["trailing_length_histogram"].get("11", 0)
+          for field in ("trailing_length_11_zero_position_masks",
+                        "trailing_length_11_zero_count_histogram",
+                        "trailing_length_11_by_tag_code"):
+              if sum(d[field].values()) != eleven:
+                  raise SystemExit(f"Legacy action length-11 accounting mismatch: {field}")
+          if any(len(mask) != 11 or set(mask) - {"0", "x"}
+                 for mask in d["trailing_length_11_zero_position_masks"]):
+              raise SystemExit("Invalid length-11 zero-position mask")
           PY
 
       - name: Cross-reference original StartSound and script containers by timeline/frame

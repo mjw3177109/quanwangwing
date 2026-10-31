@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from build_as2_action_opcode_evidence import _records, classify_trailing_bytes, build_action_opcode_evidence
+from build_as2_action_opcode_evidence import _records, classify_trailing_bytes, zero_position_mask, build_action_opcode_evidence
 
 
 def make_tag(code, body, offset, frame=0, target=None):
@@ -123,6 +123,44 @@ class OpcodeTests(unittest.TestCase):
         self.assertEqual(counts[0x9b], 1)
         self.assertEqual(counts[0x3d], 0)
         self.assertTrue(terminated)
+
+    def test_zero_position_mask_has_no_nonzero_byte_values(self):
+        self.assertEqual(zero_position_mask(bytes([0, 65, 0, 255]), 4), '0x0x')
+        self.assertEqual(zero_position_mask(b'\\x3d\\x00', 0), '')
+        self.assertEqual(zero_position_mask(bytes([0, 1, 0]), 2), 'x0')
+
+    def test_zero_position_mask_invalid_tail_rejected(self):
+        for trailing in (-1, 4):
+            with self.subTest(trailing=trailing), self.assertRaises(ValueError):
+                zero_position_mask(b'abc', trailing)
+
+    def test_length_11_mask_histograms_are_accounted_by_tag(self):
+        tail_a = bytes([0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0])
+        tail_b = bytes([0, 8, 0, 7, 0, 6, 0, 5, 0, 4, 0])
+        tail_c = bytes([1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6])
+        data = bytearray(b'FWS\\x09' + bytes(4))
+        tags = []
+        for code, tail, target in ((12, tail_a, None), (12, tail_b, None), (59, tail_c, 7)):
+            body = (b'\\x07\\x00' if code == 59 else b'') + b'\\x3d\\x00' + tail
+            raw, row = make_tag(code, body, len(data), target=target)
+            data.extend(raw)
+            tags.append(row)
+        scripts = [{k: v for k, v in t.items() if k != 'body_offset_uncompressed'} for t in tags]
+        report = build_action_opcode_evidence(
+            {'source': {'sha256': 'f' * 64}, 'tags': tags, 'scripts': scripts}, bytes(data))
+        self.assertEqual(report['trailing_length_histogram'], {'11': 3})
+        self.assertEqual(report['trailing_length_11_zero_position_masks'],
+                         {'0x0x0x0x0x0': 2, 'x0x0x0x0x0x': 1})
+        self.assertEqual(report['trailing_length_11_zero_count_histogram'], {'5': 1, '6': 2})
+        self.assertEqual(report['trailing_length_11_by_tag_code'], {'12': 2, '59': 1})
+        self.assertEqual(sum(report['trailing_length_11_zero_position_masks'].values()), 3)
+
+    def test_non_length_11_tails_do_not_enter_mask_histogram(self):
+        manifest, data = fixture()
+        report = build_action_opcode_evidence(manifest, data)
+        self.assertEqual(report['trailing_length_11_zero_position_masks'], {})
+        self.assertEqual(report['trailing_length_11_zero_count_histogram'], {})
+        self.assertEqual(report['trailing_length_11_by_tag_code'], {})
 
 
 if __name__ == '__main__':
