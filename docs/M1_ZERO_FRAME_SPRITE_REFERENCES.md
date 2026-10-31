@@ -1,6 +1,8 @@
 # M1 — 零 ShowFrame Sprite 的静态引用交叉索引
 
-在原版 SWF 的 175 条「声明帧数与 ShowFrame 数不一致」时间轴中，前一轮确认它们都没有 ShowFrame。本工具以 `swf-manifest.json` 与已验收的 `frame-tail-evidence.json` 为输入，逐个核对这些 Sprite 的 characterId、内部标签代码、静态 PlaceObject/2/3 引用、DoInitAction 目标、ExportAssets 和 SymbolClass 名称数量。
+本轮修复了一个覆盖缺口：原版 SWF 有 **192 个零 ShowFrame Sprite**，其中 175 个声明 1 帧（因此出现在帧数差异报告中），另有 17 个声明 0 帧（因此不属于帧数差异）。旧实现仅遍历 175 条差异记录，会漏掉后者。新实现以原始 `DefineSprite` 定义及各 Sprite 的真实 `ShowFrame` 标签为全集，同时独立核验 `frame-tail-evidence.json` 的差异行，避免将「无差异」误当成「不存在」。
+
+工具逐个核对 characterId、内部标签代码、静态 PlaceObject/2/3 引用、DoInitAction 目标、ExportAssets 和 SymbolClass 名称数量。`zero_sprite_declared_frame_counts` 和两类覆盖计数用于后续 Actions 门禁。192/175/17 是 2026-10-31 的原版 SWF artifact 已观察到的结构数量，不是对未来文件的硬编码假设。
 
 ```bash
 python3 tools/build_zero_frame_sprite_references.py \

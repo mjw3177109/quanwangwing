@@ -58,6 +58,49 @@ class ZeroFrameSpriteReferencesTests(unittest.TestCase):
         self.assertEqual(r["sprites_with_symbol_class_name"], 1)
         self.assertNotIn("private_original", str(r))
 
+    def test_declared_zero_sprite_without_mismatch_is_included(self):
+        m = zero_fixture()
+        next(t for t in m["tags"] if t["tag_code"] == 39)["sprite_frame_count"] = 0
+        r = report(m)
+        self.assertEqual(r["zero_show_frame_sprite_count"], 1)
+        self.assertEqual(r["zero_sprite_declared_frame_counts"], {"0": 1})
+        self.assertEqual(r["zero_sprites_in_frame_tail_mismatches"], 0)
+        self.assertEqual(r["zero_sprites_with_matching_declared_frames"], 1)
+
+    def test_mixed_declared_zero_and_one_sprite_coverage(self):
+        m = zero_fixture()
+        next(t for t in m["tags"] if t["tag_code"] == 39)["sprite_frame_count"] = 1
+        main_end = next(i for i, t in enumerate(m["tags"])
+                        if t["timeline"] == "main" and t["tag_code"] == 0)
+        m["tags"][main_end:main_end] = [
+            {"timeline": "main", "tag_code": 39, "frame": 2,
+             "character_id": 8, "sprite_frame_count": 0, "offset_uncompressed": 75},
+            {"timeline": "sprite:8", "tag_code": 0, "frame": 0,
+             "offset_uncompressed": 76},
+        ]
+        depth = depth_for(m)
+        depth["timelines"].append({
+            "timeline": "sprite:8", "declared_frames": 0,
+            "observed_show_frames": 0, "frame_count_mismatch": False, "frames": [],
+        })
+        depth["timeline_count"] += 1
+        audit = build_frame_count_audit(m, depth)
+        r = build_zero_frame_sprite_references(m, build_frame_tail_evidence(m, audit))
+        self.assertEqual(r["zero_show_frame_sprite_count"], 2)
+        self.assertEqual(r["zero_sprite_declared_frame_counts"], {"0": 1, "1": 1})
+        self.assertEqual(r["zero_sprites_in_frame_tail_mismatches"], 1)
+        self.assertEqual(r["zero_sprites_with_matching_declared_frames"], 1)
+
+    def test_declared_zero_with_showframe_is_not_zero_showframe(self):
+        m = zero_fixture()
+        next(t for t in m["tags"] if t["tag_code"] == 39)["sprite_frame_count"] = 0
+        sprite_end = next(i for i, t in enumerate(m["tags"])
+                          if t["timeline"] == "sprite:7" and t["tag_code"] == 0)
+        m["tags"].insert(sprite_end, {"timeline": "sprite:7", "tag_code": 1,
+                                      "frame": 0, "offset_uncompressed": 45})
+        m["tags"][sprite_end + 1]["frame"] = 1
+        self.assertEqual(report(m)["zero_show_frame_sprite_count"], 0)
+
     def test_nonzero_mismatch_not_misclassified(self):
         m, _ = fixture()
         m["export_assets"], m["symbol_class"] = [], []

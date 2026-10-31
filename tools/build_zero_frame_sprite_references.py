@@ -49,7 +49,12 @@ def build_zero_frame_sprite_references(manifest: dict, tail: dict) -> dict:
             or {r["timeline"] for r in rows} != expected_mismatches):
         raise ValueError("Frame-tail mismatch membership disagrees with original tags")
 
-    zero_ids = {}
+    # A zero-ShowFrame Sprite can declare zero frames and therefore never appear
+    # in the frame-tail mismatch report. Inventory ALL original Sprite definitions.
+    zero_ids = {
+        int(name.split(":", 1)[1]): name
+        for name in declarations if observed[name] == 0
+    }
     for row in rows:
         name = row["timeline"]
         declared = manifest["stage"]["frame_count"] if name == "main" else declarations[name]
@@ -60,10 +65,8 @@ def build_zero_frame_sprite_references(manifest: dict, tail: dict) -> dict:
         if row["tail_class"] != ("no_show_frame" if observed[name] == 0
                                  else row["tail_class"]):
             raise ValueError("Zero-ShowFrame classification mismatch")
-        if name != "main" and observed[name] == 0:
-            if row["tail_class"] != "no_show_frame":
-                raise ValueError("Zero-ShowFrame classification mismatch")
-            zero_ids[int(name.split(":", 1)[1])] = name
+        if name != "main" and observed[name] == 0 and row["tail_class"] != "no_show_frame":
+            raise ValueError("Zero-ShowFrame classification mismatch")
     if sum(tail["tail_class_counts"].values()) != len(rows):
         raise ValueError("Frame-tail classification accounting mismatch")
 
@@ -118,6 +121,13 @@ def build_zero_frame_sprite_references(manifest: dict, tail: dict) -> dict:
     return {
         "source_sha256": sha,
         "zero_show_frame_sprite_count": len(reports),
+        "zero_sprite_declared_frame_counts": dict(sorted(
+            Counter(str(declarations[name]) for name in zero_ids.values()).items(),
+            key=lambda pair: int(pair[0]))),
+        "zero_sprites_in_frame_tail_mismatches": sum(
+            name in expected_mismatches for name in zero_ids.values()),
+        "zero_sprites_with_matching_declared_frames": sum(
+            name not in expected_mismatches for name in zero_ids.values()),
         "sprites_with_static_place_reference": sum(r["static_place_reference_count"] > 0 for r in reports),
         "sprites_with_static_init_reference": sum(r["static_init_action_reference_count"] > 0 for r in reports),
         "sprites_with_export_name": sum(r["export_asset_name_count"] > 0 for r in reports),
