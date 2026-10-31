@@ -14,7 +14,8 @@ def fixture():
         {"tag_code": 39, "timeline": "main", "character_id": 7,
          "offset_uncompressed": 12, "sprite_frame_count": 1},
         {"tag_code": 0, "timeline": "sprite:7", "offset_uncompressed": 18},
-        {"tag_code": 59, "timeline": "main", "init_target_sprite_id": 7},
+        {"tag_code": 59, "timeline": "main", "init_target_sprite_id": 7,
+         "offset_uncompressed": 20, "frame": 0, "length": 24},
     ], "export_assets": [{"character_id": 7, "name": "__Packages.Kyo_role"}]}
     asset = {"source_sha256": SHA, "assets": [
         {"character_id": 7, "category": "sprite", "tag_code": 39, "offset_uncompressed": 12}
@@ -33,6 +34,53 @@ class ZeroFrameAS2ClassLinksTests(unittest.TestCase):
         self.assertEqual(result["zero_sprites_with_class_path_match"], 1)
         self.assertEqual(result["class_path_classifications"], {"verified_path_match": 1})
         self.assertEqual(result["entries"][0]["verified_script_size_bytes"], 123)
+        self.assertEqual(result["zero_sprite_init_tag_count"], 1)
+        self.assertEqual(result["zero_sprites_with_verified_class_and_init_tag"], 1)
+        self.assertEqual(result["entries"][0]["init_script_tags"], [
+            {"timeline": "main", "frame_zero_based": 0,
+             "offset_uncompressed": 20, "tag_length_bytes": 24}])
+
+    def test_no_init_tag_is_not_claimed(self):
+        m, a, e = fixture()
+        m["tags"] = [t for t in m["tags"] if t["tag_code"] != 59]
+        result = build_zero_frame_as2_class_links(m, a, e)
+        self.assertEqual(result["zero_sprite_init_tag_count"], 0)
+        self.assertEqual(result["zero_sprites_with_verified_class_and_init_tag"], 0)
+        self.assertEqual(result["entries"][0]["init_script_tags"], [])
+
+    def test_duplicate_init_offset_rejected(self):
+        m, a, e = fixture()
+        m["tags"].append(copy.deepcopy(m["tags"][-1]))
+        with self.assertRaisesRegex(ValueError, "Duplicate DoInitAction"):
+            build_zero_frame_as2_class_links(m, a, e)
+
+    def test_invalid_init_frame_rejected(self):
+        m, a, e = fixture()
+        m["tags"][-1]["frame"] = -1
+        with self.assertRaisesRegex(ValueError, "init frame"):
+            build_zero_frame_as2_class_links(m, a, e)
+
+    def test_invalid_init_length_rejected(self):
+        m, a, e = fixture()
+        m["tags"][-1]["length"] = -2
+        with self.assertRaisesRegex(ValueError, "init tag length"):
+            build_zero_frame_as2_class_links(m, a, e)
+
+    def test_invalid_init_offset_rejected(self):
+        m, a, e = fixture()
+        m["tags"][-1]["offset_uncompressed"] = -1
+        with self.assertRaisesRegex(ValueError, "init tag offset"):
+            build_zero_frame_as2_class_links(m, a, e)
+
+    def test_multiple_distinct_init_tags(self):
+        m, a, e = fixture()
+        second = copy.deepcopy(m["tags"][-1])
+        second["offset_uncompressed"] = 45
+        second["frame"] = 1
+        m["tags"].append(second)
+        result = build_zero_frame_as2_class_links(m, a, e)
+        self.assertEqual(result["zero_sprite_init_tag_count"], 2)
+        self.assertEqual([x["offset_uncompressed"] for x in result["entries"][0]["init_script_tags"]], [20, 45])
 
     def test_missing_path_is_not_a_match(self):
         m, a, e = fixture()

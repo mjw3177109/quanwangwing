@@ -149,6 +149,17 @@ jobs:
               raise SystemExit("Zero-frame class link row accounting mismatch")
           if d["verified_as2_script_count"] != 7054:
               raise SystemExit("FFDec AS2 verified export coverage regression")
+          if d["zero_sprite_init_tag_count"] != sum(
+                  len(e["init_script_tags"]) for e in d["entries"]):
+              raise SystemExit("Zero-frame init tag position accounting mismatch")
+          if any(e["do_init_action_target_count"] != len(e["init_script_tags"])
+                 for e in d["entries"]):
+              raise SystemExit("DoInitAction per-sprite tag accounting mismatch")
+          matched = {e["sprite_character_id"] for e in d["entries"]
+                     if e["classification"] == "verified_path_match"
+                     and e["init_script_tags"]}
+          if len(matched) != d["zero_sprites_with_verified_class_and_init_tag"]:
+              raise SystemExit("Class/init provenance join accounting mismatch")
           PYTEST
 
       - name: Verify AS2 sources and derive metadata-only semantic entry map
