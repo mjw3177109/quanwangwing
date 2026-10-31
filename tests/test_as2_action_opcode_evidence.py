@@ -207,30 +207,30 @@ class OpcodeTests(unittest.TestCase):
         self.assertNotIn('96', str(walk_action_tail_shape_candidate(tail, 11)))
 
     def test_secondary_record_shapes_cover_short_actions_and_remainder(self):
-        self.assertEqual(walk_action_tail_shape_candidate(b'\\x3d\\x3d\\x00', 3),
+        self.assertEqual(walk_action_tail_shape_candidate(b'\x3d\x3d\x00', 3),
                          ('terminated_at_end', ('S', 'S')))
-        self.assertEqual(walk_action_tail_shape_candidate(b'\\x00\\x3d', 2),
+        self.assertEqual(walk_action_tail_shape_candidate(b'\x00\x3d', 2),
                          ('terminated_with_remainder', ()))
-        self.assertEqual(walk_action_tail_shape_candidate(b'\\x3d\\x3d', 2),
+        self.assertEqual(walk_action_tail_shape_candidate(b'\x3d\x3d', 2),
                          ('no_terminator', ('S', 'S')))
 
     def test_secondary_record_shapes_fail_closed_on_bad_lengths(self):
-        self.assertEqual(walk_action_tail_shape_candidate(b'\\x96\\xff\\x7f', 3),
+        self.assertEqual(walk_action_tail_shape_candidate(b'\x96\xff\x7f', 3),
                          ('invalid_record_boundary', ()))
-        self.assertEqual(walk_action_tail_shape_candidate(b'\\x96\\x02', 2),
+        self.assertEqual(walk_action_tail_shape_candidate(b'\x96\x02', 2),
                          ('invalid_record_boundary', ()))
         with self.assertRaises(ValueError):
             walk_action_tail_shape_candidate(b'abc', 4)
 
     def test_length_11_record_shape_histogram_only_counts_terminated_at_end(self):
         tails = (bytes.fromhex('9602000102960200030400'),
-                 b'\\x3d' * 10 + b'\\x00',
-                 b'\\x00' + b'\\x3d' * 10,
-                 b'\\x96\\xff\\x7f' + bytes(8))
-        data = bytearray(b'FWS\\x09' + bytes(4))
+                 b'\x3d' * 10 + b'\x00',
+                 b'\x00' + b'\x3d' * 10,
+                 b'\x96\xff\x7f' + bytes(8))
+        data = bytearray(b'FWS\x09' + bytes(4))
         tags = []
         for tail in tails:
-            raw, row = make_tag(12, b'\\x3d\\x00' + tail, len(data))
+            raw, row = make_tag(12, b'\x3d\x00' + tail, len(data))
             data.extend(raw)
             tags.append(row)
         scripts = [{k: v for k, v in t.items() if k != 'body_offset_uncompressed'} for t in tags]
