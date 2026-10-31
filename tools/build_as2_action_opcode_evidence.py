@@ -45,6 +45,21 @@ def _records(body):
     return counts, terminated, len(body) - pos
 
 
+def classify_trailing_bytes(body, trailing):
+    """Classify bytes after top-level ActionEnd, without interpreting or emitting them."""
+    if trailing < 0 or trailing > len(body):
+        raise ValueError("Invalid trailing byte count")
+    if not trailing:
+        return "none"
+    tail = body[-trailing:]
+    zero_count = tail.count(0)
+    if zero_count == trailing:
+        return "zero_only"
+    if zero_count == 0:
+        return "nonzero_only"
+    return "mixed"
+
+
 def build_action_opcode_evidence(manifest, data):
     source = manifest.get("source", {}).get("sha256")
     if not isinstance(source, str) or len(source) != 64:
@@ -58,6 +73,9 @@ def build_action_opcode_evidence(manifest, data):
     if len(selected) != len(expected):
         raise ValueError("Legacy script container count mismatch")
     totals = Counter()
+    tail_classes = Counter()
+    tail_bytes = Counter()
+    tail_lengths = Counter()
     entries = []
     for tag, script in zip(selected, expected):
         for field in ("tag_code", "timeline", "frame", "offset_uncompressed", "length"):
@@ -74,12 +92,18 @@ def build_action_opcode_evidence(manifest, data):
             body = body[2:]
         counts, terminated, trailing = _records(body)
         totals.update(counts)
+        tail_class = classify_trailing_bytes(body, trailing)
+        tail_classes[tail_class] += 1
+        tail_bytes[tail_class] += trailing
+        if trailing:
+            tail_lengths[trailing] += 1
         entries.append({"timeline": tag["timeline"], "frame_zero_based": tag["frame"],
                         "tag_code": tag["tag_code"],
                         "offset_uncompressed": tag["offset_uncompressed"],
                         "action_record_count_top_level": sum(counts.values()),
                         "function_record_count_top_level": counts[0x9b] + counts[0x8e],
-                        "action_end_found": terminated, "bytes_after_action_end": trailing})
+                        "action_end_found": terminated, "bytes_after_action_end": trailing,
+                        "trailing_bytes_class": tail_class})
     histogram = {str(k): totals[k] for k in sorted(totals)}
     return {"source_sha256": source, "legacy_container_count": len(entries),
             "action_record_count_top_level": sum(totals.values()),
@@ -89,10 +113,18 @@ def build_action_opcode_evidence(manifest, data):
             "containers_with_action_end": sum(e["action_end_found"] for e in entries),
             "containers_with_trailing_bytes": sum(e["bytes_after_action_end"] > 0 for e in entries),
             "containers_without_action_end": sum(not e["action_end_found"] for e in entries),
+            "trailing_bytes_total": sum(tail_bytes.values()),
+            "trailing_class_counts": {name: tail_classes[name] for name in
+                                      ("none", "zero_only", "nonzero_only", "mixed")},
+            "trailing_bytes_by_class": {name: tail_bytes[name] for name in
+                                        ("none", "zero_only", "nonzero_only", "mixed")},
+            "trailing_length_histogram": {str(n): tail_lengths[n] for n in sorted(tail_lengths)},
             "entries": entries,
             "limitations": ["Only top-level legacy action records are counted; nested function bodies are not decoded.",
                             "Opcode 0x9B/0x8E is a lexical bytecode function record, not a verified callable function.",
                             "AS1 and AS2 cannot be distinguished by tag/opcode counts alone; AS3 ABC is excluded.",
+                            "Zero-only tails are padding candidates, not proven harmless padding.",
+                            "Nonzero/mixed tails are not parsed as independent action streams.",
                             "No bytecode, function names, ActionScript, image or audio bytes are emitted."]}
 
 
