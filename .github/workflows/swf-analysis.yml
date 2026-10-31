@@ -232,6 +232,17 @@ jobs:
               raise SystemExit("Unexpected pre-End branch targets")
           if sum(pre_targets.values()) != result["pre_end_branch_count"]:
               raise SystemExit("Pre-End branch target accounting mismatch")
+          reach = result["candidate_tail_static_reachability_histogram"]
+          if set(reach) != {"0", "1", "2"} or sum(reach.values()) != eligible:
+              raise SystemExit("Tail static graph coverage mismatch")
+          for key in ("candidate_tail_end_static_reachable_count",
+                      "candidate_first_end_static_reachable_count"):
+              if not 0 <= result[key] <= eligible:
+                  raise SystemExit(f"Tail static graph bound mismatch: {key}")
+          if not 0 <= result["candidate_reachable_pre_end_to_tail_boundary_edges"] <= result["candidate_pre_end_to_tail_boundary_edges"]:
+              raise SystemExit("Tail static graph edge accounting mismatch")
+          if result["candidate_unresolved_branch_edges"] < 0:
+              raise SystemExit("Tail static graph unresolved edge accounting mismatch")
           PY
 
       - name: Cross-reference original StartSound and script containers by timeline/frame
