@@ -111,6 +111,28 @@ jobs:
               raise SystemExit("Script entry accounting mismatch")
           PY
 
+      - name: Build original legacy action opcode evidence (metadata only)
+        run: |
+          python3 tools/build_as2_action_opcode_evidence.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --output build/swf-analysis/as2-action-opcode-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          scripts = json.loads((root / "script-entry-evidence.json").read_text(encoding="utf-8"))
+          d = json.loads((root / "as2-action-opcode-evidence.json").read_text(encoding="utf-8"))
+          if d["source_sha256"] != scripts["source_sha256"]:
+              raise SystemExit("Legacy action provenance mismatch")
+          if d["legacy_container_count"] != scripts["legacy_action_container_count"]:
+              raise SystemExit("Legacy action container accounting mismatch")
+          if d["action_record_count_top_level"] != sum(d["opcode_counts"].values()):
+              raise SystemExit("Legacy opcode count mismatch")
+          if len(d["entries"]) != d["legacy_container_count"]:
+              raise SystemExit("Legacy action entry coverage mismatch")
+          PY
+
       - name: Cross-reference original StartSound and script containers by timeline/frame
         run: |
           python3 tools/build_sound_script_crosswalk.py \
