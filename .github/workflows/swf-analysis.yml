@@ -226,8 +226,19 @@ jobs:
           if r["static_init_action_reference_count"] != sum(
                   x["static_init_action_reference_count"] for x in r["sprites"]):
               raise SystemExit("Zero-frame init action accounting mismatch")
-          if r["zero_show_frame_sprite_count"] > t["tail_class_counts"].get("no_show_frame", 0):
-              raise SystemExit("Zero-frame sprite count exceeds frame-tail evidence")
+          shown = {x["timeline"] for x in m["tags"] if x["tag_code"] == 1}
+          expected = {x["character_id"] for x in m["tags"] if x["tag_code"] == 39
+                      and f"sprite:{x['character_id']}" not in shown}
+          if {x["sprite_character_id"] for x in r["sprites"]} != expected:
+              raise SystemExit("Zero-frame Sprite inventory omits original definitions")
+          if r["zero_sprites_in_frame_tail_mismatches"] != t["tail_class_counts"].get("no_show_frame", 0):
+              raise SystemExit("Frame-tail zero-ShowFrame mismatch accounting error")
+          if (r["zero_sprites_in_frame_tail_mismatches"]
+                  + r["zero_sprites_with_matching_declared_frames"]
+                  != r["zero_show_frame_sprite_count"]):
+              raise SystemExit("Zero-frame declared/observed coverage accounting error")
+          if sum(r["zero_sprite_declared_frame_counts"].values()) != len(expected):
+              raise SystemExit("Zero-frame declaration histogram mismatch")
           PY
 
       - name: Join zero-ShowFrame sprites with verified DoInitAction script entries

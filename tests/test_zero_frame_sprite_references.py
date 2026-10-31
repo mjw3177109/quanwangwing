@@ -58,6 +58,35 @@ class ZeroFrameSpriteReferencesTests(unittest.TestCase):
         self.assertEqual(r["sprites_with_symbol_class_name"], 1)
         self.assertNotIn("private_original", str(r))
 
+    def test_declared_zero_sprite_without_mismatch_is_included(self):
+        m = zero_fixture()
+        next(t for t in m["tags"] if t["tag_code"] == 39)["sprite_frame_count"] = 0
+        r = report(m)
+        self.assertEqual(r["zero_show_frame_sprite_count"], 1)
+        self.assertEqual(r["zero_sprite_declared_frame_counts"], {"0": 1})
+        self.assertEqual(r["zero_sprites_in_frame_tail_mismatches"], 0)
+        self.assertEqual(r["zero_sprites_with_matching_declared_frames"], 1)
+
+    def test_mixed_declared_zero_and_one_sprite_coverage(self):
+        m = zero_fixture()
+        m["tags"].extend([
+            {"timeline": "main", "tag_code": 39, "character_id": 8,
+             "sprite_frame_count": 0, "offset_uncompressed": 111},
+            {"timeline": "sprite:8", "tag_code": 0, "offset_uncompressed": 113},
+        ])
+        r = report(m)
+        self.assertEqual(r["zero_show_frame_sprite_count"], 2)
+        self.assertEqual(r["zero_sprite_declared_frame_counts"], {"0": 1, "1": 1})
+        self.assertEqual(r["zero_sprites_in_frame_tail_mismatches"], 1)
+        self.assertEqual(r["zero_sprites_with_matching_declared_frames"], 1)
+
+    def test_declared_zero_with_showframe_is_not_zero_showframe(self):
+        m = zero_fixture()
+        next(t for t in m["tags"] if t["tag_code"] == 39)["sprite_frame_count"] = 0
+        m["tags"].append({"timeline": "sprite:7", "tag_code": 1,
+                          "frame": 0, "offset_uncompressed": 121})
+        self.assertEqual(report(m)["zero_show_frame_sprite_count"], 0)
+
     def test_nonzero_mismatch_not_misclassified(self):
         m, _ = fixture()
         m["export_assets"], m["symbol_class"] = [], []
