@@ -126,7 +126,7 @@ class OpcodeTests(unittest.TestCase):
 
     def test_zero_position_mask_has_no_nonzero_byte_values(self):
         self.assertEqual(zero_position_mask(bytes([0, 65, 0, 255]), 4), '0x0x')
-        self.assertEqual(zero_position_mask(b'\\x3d\\x00', 0), '')
+        self.assertEqual(zero_position_mask(b'\x3d\x00', 0), '')
         self.assertEqual(zero_position_mask(bytes([0, 1, 0]), 2), 'x0')
 
     def test_zero_position_mask_invalid_tail_rejected(self):
@@ -138,10 +138,10 @@ class OpcodeTests(unittest.TestCase):
         tail_a = bytes([0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0])
         tail_b = bytes([0, 8, 0, 7, 0, 6, 0, 5, 0, 4, 0])
         tail_c = bytes([1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6])
-        data = bytearray(b'FWS\\x09' + bytes(4))
+        data = bytearray(b'FWS\x09' + bytes(4))
         tags = []
         for code, tail, target in ((12, tail_a, None), (12, tail_b, None), (59, tail_c, 7)):
-            body = (b'\\x07\\x00' if code == 59 else b'') + b'\\x3d\\x00' + tail
+            body = (b'\x07\x00' if code == 59 else b'') + b'\x3d\x00' + tail
             raw, row = make_tag(code, body, len(data), target=target)
             data.extend(raw)
             tags.append(row)
