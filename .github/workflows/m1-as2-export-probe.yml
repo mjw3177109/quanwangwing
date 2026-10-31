@@ -203,6 +203,31 @@ jobs:
               raise SystemExit("Sprite timeline accounting mismatch")
           PY
 
+      - name: Extract hash-verified role timeline callsite candidates (metadata only)
+        run: |
+          python3 tools/build_role_timeline_call_evidence.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --role-crosswalk build/as2-probe/role-crosswalk.json \
+            --output build/as2-probe/role-timeline-call-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "role-timeline-call-evidence.json").read_text(encoding="utf-8"))
+          r = json.loads((root / "role-crosswalk.json").read_text(encoding="utf-8"))
+          if d["source_sha256"] != r["source_sha256"] or d["role_variant_count"] != r["role_variant_count"]:
+              raise SystemExit("Role timeline call provenance/count mismatch")
+          if d["role_variant_count"] != 16 or len(d["roles"]) != 16:
+              raise SystemExit("Role timeline call variant coverage mismatch")
+          if sum(d["argument_kind_counts"].values()) != d["call_candidate_count"]:
+              raise SystemExit("Role timeline call argument classification mismatch")
+          if sum(x["call_candidate_count"] for x in d["roles"]) != d["call_candidate_count"]:
+              raise SystemExit("Role timeline call row accounting mismatch")
+          if any(x["call_candidate_count"] != len(x["calls"]) for x in d["roles"]):
+              raise SystemExit("Role timeline callsite row mismatch")
+          PY
+
       - name: Trace direct role placements and DoInitAction targets
         run: |
           python3 tools/build_role_reference_evidence.py \
@@ -445,6 +470,7 @@ jobs:
             build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-zero-frame-init-join.json
             build/as2-probe/role-crosswalk.json
+            build/as2-probe/role-timeline-call-evidence.json
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
             build/as2-probe/attach-argument-provenance.json
