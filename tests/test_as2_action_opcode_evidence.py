@@ -164,11 +164,11 @@ class OpcodeTests(unittest.TestCase):
 
 
     def test_secondary_tail_record_walk_classifies_only_structure(self):
-        self.assertEqual(walk_action_tail_candidate(b'\\x3d\\x00', 0), ('none', 0))
-        self.assertEqual(walk_action_tail_candidate(b'\\x3d\\x00\\x3d\\x00', 2), ('terminated_at_end', 1))
-        self.assertEqual(walk_action_tail_candidate(b'\\x3d\\x00\\x00\\x7f', 2), ('terminated_with_remainder', 0))
-        self.assertEqual(walk_action_tail_candidate(b'\\x3d\\x00\\x3d\\x3d', 2), ('no_terminator', 2))
-        self.assertEqual(walk_action_tail_candidate(b'\\x3d\\x00\\x96\\x04\\x00\\x01', 4),
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00', 0), ('none', 0))
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00\x3d\x00', 2), ('terminated_at_end', 1))
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00\x00\x7f', 2), ('terminated_with_remainder', 0))
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00\x3d\x3d', 2), ('no_terminator', 2))
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00\x96\x04\x00\x01', 4),
                          ('invalid_record_boundary', 0))
 
     def test_secondary_tail_record_walk_invalid_length_rejected(self):
@@ -177,14 +177,14 @@ class OpcodeTests(unittest.TestCase):
                 walk_action_tail_candidate(b'abc', trailing)
 
     def test_length_11_candidate_walk_histograms_close(self):
-        tails = (b'\\x3d' * 10 + b'\\x00',
-                 b'\\x00' + b'\\x3d' * 10,
-                 b'\\x3d' * 11,
-                 b'\\x96\\xff\\x7f' + bytes(8))
-        data = bytearray(b'FWS\\x09' + bytes(4))
+        tails = (b'\x3d' * 10 + b'\x00',
+                 b'\x00' + b'\x3d' * 10,
+                 b'\x3d' * 11,
+                 b'\x96\xff\x7f' + bytes(8))
+        data = bytearray(b'FWS\x09' + bytes(4))
         tags = []
         for tail in tails:
-            raw, row = make_tag(12, b'\\x3d\\x00' + tail, len(data))
+            raw, row = make_tag(12, b'\x3d\x00' + tail, len(data))
             data.extend(raw)
             tags.append(row)
         scripts = [{k: v for k, v in t.items() if k != 'body_offset_uncompressed'} for t in tags]
