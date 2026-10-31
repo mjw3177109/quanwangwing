@@ -208,6 +208,35 @@ class TailCompatibilityTests(unittest.TestCase):
         self.assertEqual(sum(report["candidate_reachable_unresolved_branch_target_histogram"].values()), 0)
         self.assertNotIn("810200", str(report))
 
+    def test_pre_end_interior_target_hits_long_record_length_field(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("990200fcff00") + tail)
+        self.assertEqual(result["unresolved_branch_target_histogram"]["pre_end_record_interior"], 1)
+        self.assertEqual(result["unresolved_pre_end_interior_region_histogram"],
+                         {"length_field": 1, "payload": 0, "unclassified": 0})
+
+    def test_pre_end_interior_target_hits_long_record_payload(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("990200feff00") + tail)
+        self.assertEqual(result["unresolved_pre_end_interior_region_histogram"],
+                         {"length_field": 0, "payload": 1, "unclassified": 0})
+
+    def test_record_boundary_is_not_counted_as_interior(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("990200fbff00") + tail)
+        self.assertEqual(result["unresolved_branch_edges"], 0)
+        self.assertEqual(sum(result["unresolved_pre_end_interior_region_histogram"].values()), 0)
+
+    def test_region_report_is_metadata_only_and_closes(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        manifest, data = synthetic_manifest([(12, tail), (59, tail)])
+        report = build_tail_compatibility(manifest, data)
+        regions = report["candidate_unresolved_pre_end_interior_region_histogram"]
+        self.assertEqual(set(regions), {"length_field", "payload", "unclassified"})
+        self.assertEqual(sum(regions.values()),
+                         report["candidate_unresolved_branch_target_histogram"]["pre_end_record_interior"])
+        self.assertNotIn("810200", str(report))
+
     def test_wrong_init_target_fails_closed(self):
         tail = bytes.fromhex("9602000401990200010000")
         manifest, data = synthetic_manifest([(59, tail)])

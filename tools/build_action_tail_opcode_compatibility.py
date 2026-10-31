@@ -98,6 +98,7 @@ UNRESOLVED_TARGET_CLASSES = (
     "pre_end_record_interior", "tail_record_interior",
     "outside_before", "outside_after", "invalid_operand_length"
 )
+PRE_END_INTERIOR_REGIONS = ("length_field", "payload", "unclassified")
 
 TAIL_ACTION_KINDS = ("goto_frame", "jump", "if", "other")
 TAIL_BRANCH_TARGETS = ("record_boundary", "record_interior", "before_tail", "after_tail")
@@ -165,6 +166,18 @@ def audit_11_byte_tail_control_flow(body):
             tail_targets[category] += 1
     return tail_kinds, tail_targets, pre_kinds, pre_targets
 
+def classify_pre_end_record_interior(target, nodes, tail_start):
+    """Classify a branch target inside a parsed top-level record, not runtime behavior."""
+    for start, (opcode, next_pos, _) in nodes.items():
+        if start >= tail_start:
+            continue
+        if start < target < next_pos:
+            if opcode >= 0x80:
+                return "length_field" if target < start + 3 else "payload"
+            return "unclassified"
+    return "unclassified"
+
+
 def audit_11_byte_tail_reachability(body):
     """Bounded top-level Jump/If/fallthrough graph; NOT Flash runtime reachability.
 
@@ -210,6 +223,7 @@ def audit_11_byte_tail_reachability(body):
     graph = {}
     unresolved = 0
     unresolved_targets = Counter()
+    interior_regions = Counter()
     unresolved_sources = {}
     for start, (opcode, next_pos, target) in nodes.items():
         if opcode in (0, 0x2A, 0x3E):  # ActionEnd / Throw / Return
@@ -229,6 +243,10 @@ def audit_11_byte_tail_reachability(body):
                 else:
                     category = "tail_record_interior"
                 unresolved_targets[category] += 1
+                if category == "pre_end_record_interior":
+                    interior_regions[
+                        classify_pre_end_record_interior(target, nodes, tail_start)
+                    ] += 1
                 unresolved_sources[start] = category
             if opcode == 0x9D and next_pos in nodes:
                 edges.append(next_pos)
@@ -263,6 +281,9 @@ def audit_11_byte_tail_reachability(body):
         "reachable_unresolved_branch_target_histogram": {
             key: reachable_unresolved[key] for key in UNRESOLVED_TARGET_CLASSES
         },
+        "unresolved_pre_end_interior_region_histogram": {
+            key: interior_regions[key] for key in PRE_END_INTERIOR_REGIONS
+        },
     }
 
 
@@ -289,6 +310,7 @@ def build_tail_compatibility(manifest, data):
     reach_tail_end = reach_first_end = pre_tail_edges = reached_pre_tail_edges = unresolved_edges = 0
     unresolved_targets = Counter()
     reachable_unresolved_targets = Counter()
+    interior_regions = Counter()
     for tag, script in zip(selected, expected):
         for key in ("tag_code", "timeline", "frame", "offset_uncompressed", "length"):
             if tag.get(key) != script.get(key):
@@ -322,6 +344,7 @@ def build_tail_compatibility(manifest, data):
         unresolved_edges += reach["unresolved_branch_edges"]
         unresolved_targets.update(reach["unresolved_branch_target_histogram"])
         reachable_unresolved_targets.update(reach["reachable_unresolved_branch_target_histogram"])
+        interior_regions.update(reach["unresolved_pre_end_interior_region_histogram"])
         tail_kinds.update(candidate_k)
         tail_targets.update(candidate_t)
         pre_kinds.update(prior_k)
@@ -358,6 +381,9 @@ def build_tail_compatibility(manifest, data):
         "candidate_reachable_unresolved_branch_target_histogram": {
             key: reachable_unresolved_targets[key] for key in UNRESOLVED_TARGET_CLASSES
         },
+        "candidate_unresolved_pre_end_interior_region_histogram": {
+            key: interior_regions[key] for key in PRE_END_INTERIOR_REGIONS
+        },
         "limitations": [
             "Only secondary 11-byte L2>L2>End syntax after the FIRST ActionEnd is probed.",
             "Known opcode framing does not prove Flash executes the trailing records.",
@@ -367,6 +393,7 @@ def build_tail_compatibility(manifest, data):
             "WaitForFrame skip behavior, nested bodies and dynamic execution are not modeled.",
             "Unresolved branch targets are classified but not followed; graph absence does not prove runtime unreachability.",
             "Reachable unresolved edges count graph-reached source records, not executable Flash behavior.",
+            "Pre-End interior regions describe byte positions in top-level records, not valid jump targets.",
             "GotoFrame operands are frame numbers, not relative branch offsets.",
             "Only top-level pre-End branches are scanned; nested function bodies are excluded.",
             "No opcode values, operand bytes, ActionScript or media are emitted."

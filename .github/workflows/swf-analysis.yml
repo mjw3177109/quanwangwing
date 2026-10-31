@@ -256,6 +256,13 @@ jobs:
                  not 0 <= reachable_unresolved[k] <= all_unresolved[k]
                  for k in expected_unresolved):
               raise SystemExit("Reachable unresolved branch category bounds mismatch")
+          regions = result["candidate_unresolved_pre_end_interior_region_histogram"]
+          if set(regions) != {"length_field", "payload", "unclassified"}:
+              raise SystemExit("Unexpected pre-End record interior region classes")
+          if any(not isinstance(v, int) or v < 0 for v in regions.values()):
+              raise SystemExit("Invalid pre-End record interior region counts")
+          if sum(regions.values()) != all_unresolved["pre_end_record_interior"]:
+              raise SystemExit("Pre-End record interior region accounting mismatch")
           PY
 
       - name: Cross-reference original StartSound and script containers by timeline/frame
