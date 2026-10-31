@@ -149,6 +149,39 @@ class TailCompatibilityTests(unittest.TestCase):
         result = audit_11_byte_tail_reachability(bytes.fromhex("990200020000") + tail)
         self.assertEqual(result["tail_record_count"], 0)
         self.assertEqual(result["unresolved_branch_edges"], 1)
+        self.assertEqual(result["unresolved_branch_target_histogram"]["tail_record_interior"], 1)
+        self.assertEqual(result["reachable_unresolved_branch_target_histogram"]["tail_record_interior"], 1)
+
+    def test_static_graph_classifies_pre_end_interior(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("990200fcff00") + tail)
+        self.assertEqual(result["unresolved_branch_target_histogram"]["pre_end_record_interior"], 1)
+        self.assertEqual(result["reachable_unresolved_branch_target_histogram"]["pre_end_record_interior"], 1)
+
+    def test_static_graph_classifies_outside_before_and_after(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        for prefix, expected in (
+            ("990200f6ff00", "outside_before"),
+            ("9902000c0000", "outside_after"),
+        ):
+            with self.subTest(expected=expected):
+                result = audit_11_byte_tail_reachability(bytes.fromhex(prefix) + tail)
+                self.assertEqual(result["unresolved_branch_target_histogram"][expected], 1)
+                self.assertEqual(sum(result["unresolved_branch_target_histogram"].values()), 1)
+                self.assertEqual(sum(result["reachable_unresolved_branch_target_histogram"].values()), 1)
+
+    def test_static_graph_classifies_invalid_branch_operand(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("9d01000000") + tail)
+        self.assertEqual(result["unresolved_branch_target_histogram"]["invalid_operand_length"], 1)
+        self.assertEqual(result["reachable_unresolved_branch_target_histogram"]["invalid_operand_length"], 1)
+
+    def test_static_graph_unreachable_unresolved_edge_not_counted_reachable(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        # Return ends the entry path before the malformed branch.
+        result = audit_11_byte_tail_reachability(bytes.fromhex("3e990200020000") + tail)
+        self.assertEqual(result["unresolved_branch_target_histogram"]["tail_record_interior"], 1)
+        self.assertEqual(sum(result["reachable_unresolved_branch_target_histogram"].values()), 0)
 
     def test_static_graph_tail_end_only_not_counted_as_record(self):
         tail = bytes.fromhex("8102000100810200020000")
@@ -170,6 +203,9 @@ class TailCompatibilityTests(unittest.TestCase):
                          {"0": 2, "1": 0, "2": 0})
         self.assertEqual(report["candidate_first_end_static_reachable_count"], 2)
         self.assertEqual(report["candidate_reachable_pre_end_to_tail_boundary_edges"], 0)
+        self.assertEqual(sum(report["candidate_unresolved_branch_target_histogram"].values()),
+                         report["candidate_unresolved_branch_edges"])
+        self.assertEqual(sum(report["candidate_reachable_unresolved_branch_target_histogram"].values()), 0)
         self.assertNotIn("810200", str(report))
 
     def test_wrong_init_target_fails_closed(self):

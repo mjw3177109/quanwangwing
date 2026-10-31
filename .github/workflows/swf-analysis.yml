@@ -243,6 +243,19 @@ jobs:
               raise SystemExit("Tail static graph edge accounting mismatch")
           if result["candidate_unresolved_branch_edges"] < 0:
               raise SystemExit("Tail static graph unresolved edge accounting mismatch")
+          expected_unresolved = {"pre_end_record_interior", "tail_record_interior",
+                                 "outside_before", "outside_after", "invalid_operand_length"}
+          all_unresolved = result["candidate_unresolved_branch_target_histogram"]
+          reachable_unresolved = result["candidate_reachable_unresolved_branch_target_histogram"]
+          if set(all_unresolved) != expected_unresolved or set(reachable_unresolved) != expected_unresolved:
+              raise SystemExit("Unexpected unresolved branch target categories")
+          if sum(all_unresolved.values()) != result["candidate_unresolved_branch_edges"]:
+              raise SystemExit("Unresolved branch category accounting mismatch")
+          if any(not isinstance(all_unresolved[k], int) or
+                 not isinstance(reachable_unresolved[k], int) or
+                 not 0 <= reachable_unresolved[k] <= all_unresolved[k]
+                 for k in expected_unresolved):
+              raise SystemExit("Reachable unresolved branch category bounds mismatch")
           PY
 
       - name: Cross-reference original StartSound and script containers by timeline/frame
