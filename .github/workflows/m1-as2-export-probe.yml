@@ -317,6 +317,30 @@ jobs:
               raise SystemExit("Unverified lexical scope classified as runtime binding")
           PY
 
+      - name: Join dynamic attachMovie hashed references to role script evidence
+        run: |
+          python3 tools/build_dynamic_attach_reference_join.py \
+            --provenance build/as2-probe/attach-argument-provenance.json \
+            --references build/as2-probe/attach-identifier-references.json \
+            --roles build/as2-probe/role-zero-frame-init-join.json \
+            --output build/as2-probe/dynamic-attach-reference-join.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "dynamic-attach-reference-join.json").read_text(encoding="utf-8"))
+          p = json.loads((root / "attach-argument-provenance.json").read_text(encoding="utf-8"))
+          r = json.loads((root / "attach-identifier-references.json").read_text(encoding="utf-8"))
+          if d["dynamic_attach_count"] != p["dynamic_argument_count"]:
+              raise SystemExit("Dynamic attach join coverage mismatch")
+          if d["identifier_target_count"] != r["identifier_target_count"]:
+              raise SystemExit("Identifier target join coverage mismatch")
+          if d["identifier_occurrence_count"] != r["identifier_occurrence_count"]:
+              raise SystemExit("Identifier occurrence join coverage mismatch")
+          if any(e["runtime_binding_verified"] for e in d["events"]):
+              raise SystemExit("Unverified dynamic binding classified as verified")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -351,5 +375,6 @@ jobs:
             build/as2-probe/runtime-attach-evidence.json
             build/as2-probe/attach-argument-provenance.json
             build/as2-probe/attach-identifier-references.json
+            build/as2-probe/dynamic-attach-reference-join.json
           if-no-files-found: warn
           retention-days: 7
