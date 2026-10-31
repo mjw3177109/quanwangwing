@@ -61,7 +61,8 @@ def build_zero_frame_as2_class_links(manifest: dict, asset: dict, export: dict) 
     tags = manifest["tags"]
     sprite_defs = {}
     sprite_show = Counter()
-    init_targets = Counter()
+    init_targets = defaultdict(list)
+    init_offsets = set()
     for tag in tags:
         code = _uint(tag["tag_code"], "tag code")
         timeline = tag["timeline"]
@@ -75,7 +76,17 @@ def build_zero_frame_as2_class_links(manifest: dict, asset: dict, export: dict) 
         elif code == 1:
             sprite_show[timeline] += 1
         elif code == 59:
-            init_targets[_uint(tag["init_target_sprite_id"], "init target ID")] += 1
+            sid = _uint(tag["init_target_sprite_id"], "init target ID")
+            key = (timeline, _uint(tag["offset_uncompressed"], "init tag offset"))
+            if key in init_offsets:
+                raise ValueError("Duplicate DoInitAction tag offset")
+            init_offsets.add(key)
+            init_targets[sid].append({
+                "timeline": timeline,
+                "frame_zero_based": _uint(tag["frame"], "init frame"),
+                "offset_uncompressed": key[1],
+                "tag_length_bytes": _uint(tag["length"], "init tag length"),
+            })
 
     asset_defs = {}
     for item in asset["assets"]:
@@ -112,7 +123,9 @@ def build_zero_frame_as2_class_links(manifest: dict, asset: dict, export: dict) 
             rows.append({
                 "sprite_character_id": sid,
                 "sprite_definition_offset_uncompressed": _uint(definition["offset_uncompressed"], "offset"),
-                "do_init_action_target_count": init_targets[sid],
+                "do_init_action_target_count": len(init_targets[sid]),
+                "init_script_tags": sorted(init_targets[sid],
+                                           key=lambda t: (t["timeline"], t["offset_uncompressed"])),
                 "export_name_sha256": _digest(name),
                 "classification": classification,
                 "candidate_script_path_sha256": _digest(candidate) if candidate else None,
@@ -124,7 +137,13 @@ def build_zero_frame_as2_class_links(manifest: dict, asset: dict, export: dict) 
         "verified_as2_script_count": len(paths),
         "zero_show_frame_sprite_count": len(zero_ids),
         "zero_sprite_export_count": len(rows),
-        "zero_sprites_with_init_target": sum(init_targets[sid] > 0 for sid in zero_ids),
+        "zero_sprites_with_init_target": sum(bool(init_targets[sid]) for sid in zero_ids),
+        "zero_sprite_init_tag_count": sum(len(init_targets[sid]) for sid in zero_ids),
+        "zero_sprites_with_verified_class_and_init_tag": len({
+            row["sprite_character_id"] for row in rows
+            if row["classification"] == "verified_path_match"
+            and init_targets[row["sprite_character_id"]]
+        }),
         "zero_sprites_with_class_path_match": len({r["sprite_character_id"] for r in rows
                                                   if r["classification"] == "verified_path_match"}),
         "class_path_classifications": dict(sorted(classes.items())),
@@ -132,6 +151,7 @@ def build_zero_frame_as2_class_links(manifest: dict, asset: dict, export: dict) 
         "limitations": [
             "Class paths are derived only by __Packages dotted-name to FFDec script-path convention.",
             "An existing, hash-verified AS2 export path is lexical evidence, not a runtime binding.",
+            "DoInitAction frame/offset/length are parsed SWF tag metadata, not proof of execution.",
             "Zero ShowFrame does not prove that a sprite is an invisible class container.",
             "No source bodies, raw export names, script paths, images or audio are emitted.",
         ],
