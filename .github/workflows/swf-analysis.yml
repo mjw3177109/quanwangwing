@@ -213,6 +213,25 @@ jobs:
               raise SystemExit("Tail operand tag accounting mismatch")
           if set(result["candidate_by_tag_code"]) - {"12", "59"}:
               raise SystemExit("Unexpected tail operand tag type")
+          kinds = result["candidate_action_kind_histogram"]
+          if set(kinds) != {"goto_frame", "jump", "if", "other"}:
+              raise SystemExit("Unexpected tail action kinds")
+          if sum(kinds.values()) != result["candidate_record_count"]:
+              raise SystemExit("Tail action-kind accounting mismatch")
+          targets = result["candidate_branch_target_histogram"]
+          if set(targets) != {"record_boundary", "record_interior", "before_tail", "after_tail"}:
+              raise SystemExit("Unexpected candidate branch targets")
+          if sum(targets.values()) != kinds["jump"] + kinds["if"]:
+              raise SystemExit("Tail candidate branch target accounting mismatch")
+          pre_kinds = result["pre_end_branch_kind_histogram"]
+          if set(pre_kinds) != {"jump", "if"} or sum(pre_kinds.values()) != result["pre_end_branch_count"]:
+              raise SystemExit("Pre-End branch kind accounting mismatch")
+          pre_targets = result["pre_end_branch_target_histogram"]
+          if set(pre_targets) != {"record_boundary", "record_interior", "first_action_end",
+                                  "before_first_action_end", "outside_before", "outside_after"}:
+              raise SystemExit("Unexpected pre-End branch targets")
+          if sum(pre_targets.values()) != result["pre_end_branch_count"]:
+              raise SystemExit("Pre-End branch target accounting mismatch")
           PY
 
       - name: Cross-reference original StartSound and script containers by timeline/frame

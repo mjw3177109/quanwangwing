@@ -92,6 +92,74 @@ def classify_11_byte_tail(tail):
     return tuple(classes)
 
 
+
+BRANCH_CODES = {0x99: "jump", 0x9D: "if"}
+TAIL_ACTION_KINDS = ("goto_frame", "jump", "if", "other")
+TAIL_BRANCH_TARGETS = ("record_boundary", "record_interior", "before_tail", "after_tail")
+PRE_END_TARGETS = ("record_boundary", "record_interior", "first_action_end",
+                   "before_first_action_end", "outside_before", "outside_after")
+
+
+def audit_11_byte_tail_control_flow(body):
+    """Return static branch classifications, never opcode bytes or offsets."""
+    tail_start = len(body) - 11
+    if tail_start < 1 or classify_11_byte_tail(body[-11:]) is None:
+        raise ValueError("Expected bounded L2>L2>End tail")
+    pre_kinds, pre_targets = Counter(), Counter()
+    pos = 0
+    while pos < tail_start:
+        opcode = body[pos]
+        pos += 1
+        if opcode == 0:
+            if pos != tail_start:
+                raise ValueError("First ActionEnd offset mismatch")
+            break
+        length = 0
+        if opcode >= 0x80:
+            if pos + 2 > tail_start - 1:
+                raise ValueError("Truncated pre-End action header")
+            length = struct.unpack_from("<H", body, pos)[0]
+            pos += 2
+            if pos + length > tail_start - 1:
+                raise ValueError("Pre-End action crosses first ActionEnd")
+        if opcode in BRANCH_CODES and length == 2:
+            target = pos + length + struct.unpack_from("<h", body, pos)[0]
+            pre_kinds[BRANCH_CODES[opcode]] += 1
+            if target in (tail_start, tail_start + 5, tail_start + 10):
+                category = "record_boundary"
+            elif tail_start <= target < len(body):
+                category = "record_interior"
+            elif target == tail_start - 1:
+                category = "first_action_end"
+            elif target < 0:
+                category = "outside_before"
+            elif target >= len(body):
+                category = "outside_after"
+            else:
+                category = "before_first_action_end"
+            pre_targets[category] += 1
+        pos += length
+    else:
+        raise ValueError("No first ActionEnd at expected offset")
+    tail_kinds, tail_targets = Counter(), Counter()
+    tail = body[-11:]
+    for offset in (0, 5):
+        opcode = tail[offset]
+        kind = ("goto_frame" if opcode == 0x81 else BRANCH_CODES.get(opcode, "other"))
+        tail_kinds[kind] += 1
+        if opcode in BRANCH_CODES:
+            target = tail_start + offset + 5 + struct.unpack_from("<h", tail, offset + 3)[0]
+            if target in (tail_start, tail_start + 5, tail_start + 10):
+                category = "record_boundary"
+            elif tail_start <= target < len(body):
+                category = "record_interior"
+            elif target < tail_start:
+                category = "before_tail"
+            else:
+                category = "after_tail"
+            tail_targets[category] += 1
+    return tail_kinds, tail_targets, pre_kinds, pre_targets
+
 def build_tail_compatibility(manifest, data):
     source = manifest.get("source", {}).get("sha256")
     if not isinstance(source, str) or len(source) != 64:
@@ -109,6 +177,8 @@ def build_tail_compatibility(manifest, data):
     by_tag = Counter()
     length_11 = 0
     nonmatching_shape = 0
+    tail_kinds, tail_targets = Counter(), Counter()
+    pre_kinds, pre_targets = Counter(), Counter()
     for tag, script in zip(selected, expected):
         for key in ("tag_code", "timeline", "frame", "offset_uncompressed", "length"):
             if tag.get(key) != script.get(key):
@@ -132,6 +202,11 @@ def build_tail_compatibility(manifest, data):
         if pair is None:
             nonmatching_shape += 1
             continue
+        candidate_k, candidate_t, prior_k, prior_t = audit_11_byte_tail_control_flow(body)
+        tail_kinds.update(candidate_k)
+        tail_targets.update(candidate_t)
+        pre_kinds.update(prior_k)
+        pre_targets.update(prior_t)
         classes.update(pair)
         pairs[">".join(pair)] += 1
         by_tag[str(tag["tag_code"])] += 1
@@ -146,10 +221,18 @@ def build_tail_compatibility(manifest, data):
         "candidate_record_class_histogram": {k: classes[k] for k in CLASS_NAMES},
         "candidate_pair_class_histogram": dict(sorted(pairs.items())),
         "candidate_by_tag_code": dict(sorted(by_tag.items())),
+        "candidate_action_kind_histogram": {k: tail_kinds[k] for k in TAIL_ACTION_KINDS},
+        "candidate_branch_target_histogram": {k: tail_targets[k] for k in TAIL_BRANCH_TARGETS},
+        "pre_end_branch_count": sum(pre_kinds.values()),
+        "pre_end_branch_kind_histogram": {k: pre_kinds[k] for k in ("jump", "if")},
+        "pre_end_branch_target_histogram": {k: pre_targets[k] for k in PRE_END_TARGETS},
         "limitations": [
             "Only secondary 11-byte L2>L2>End syntax after the FIRST ActionEnd is probed.",
             "Known opcode framing does not prove Flash executes the trailing records.",
             "Variable-length payloads are not semantically decoded.",
+            "A static branch target does not establish Flash runtime reachability.",
+            "GotoFrame operands are frame numbers, not relative branch offsets.",
+            "Only top-level pre-End branches are scanned; nested function bodies are excluded.",
             "No opcode values, operand bytes, ActionScript or media are emitted."
         ],
     }

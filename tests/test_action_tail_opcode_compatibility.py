@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from build_action_tail_opcode_compatibility import (
     push_payload_well_formed, classify_long_action, classify_11_byte_tail,
-    build_tail_compatibility,
+    build_tail_compatibility, audit_11_byte_tail_control_flow,
 )
 
 
@@ -83,6 +83,44 @@ class TailCompatibilityTests(unittest.TestCase):
         self.assertEqual(report["trailing_length_11_count"], 2)
         self.assertEqual(report["l2_l2_end_candidate_count"], 1)
         self.assertEqual(report["other_shape_count"], 1)
+
+    def test_tail_gotoframe_not_treated_as_relative_jump(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        kinds, targets, pre_kinds, pre_targets = audit_11_byte_tail_control_flow(b"\x3d\x00" + tail)
+        self.assertEqual(kinds, {"goto_frame": 2})
+        self.assertFalse(targets)
+        self.assertFalse(pre_kinds)
+        self.assertFalse(pre_targets)
+
+    def test_tail_jump_if_boundary_classification(self):
+        tail = bytes.fromhex("99020005009d0200f6ff00")
+        kinds, targets, _, _ = audit_11_byte_tail_control_flow(b"\x3d\x00" + tail)
+        self.assertEqual(kinds, {"jump": 1, "if": 1})
+        self.assertEqual(targets, {"record_boundary": 2})
+
+    def test_pre_end_jump_skipping_first_action_end(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        body = bytes.fromhex("990200010000") + tail
+        _, _, kinds, targets = audit_11_byte_tail_control_flow(body)
+        self.assertEqual(kinds, {"jump": 1})
+        self.assertEqual(targets, {"record_boundary": 1})
+
+    def test_pre_end_if_into_record_interior(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        body = bytes.fromhex("9d0200020000") + tail
+        _, _, kinds, targets = audit_11_byte_tail_control_flow(body)
+        self.assertEqual(kinds, {"if": 1})
+        self.assertEqual(targets, {"record_interior": 1})
+
+    def test_flow_report_accounting_and_privacy(self):
+        tail = bytes.fromhex("99020005009d0200f6ff00")
+        manifest, data = synthetic_manifest([(12, tail), (59, tail)])
+        report = build_tail_compatibility(manifest, data)
+        self.assertEqual(report["candidate_action_kind_histogram"]["jump"], 2)
+        self.assertEqual(report["candidate_action_kind_histogram"]["if"], 2)
+        self.assertEqual(report["candidate_branch_target_histogram"]["record_boundary"], 4)
+        self.assertEqual(report["pre_end_branch_count"], 0)
+        self.assertNotIn("990200", str(report))
 
     def test_wrong_init_target_fails_closed(self):
         tail = bytes.fromhex("9602000401990200010000")
