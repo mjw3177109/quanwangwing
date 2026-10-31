@@ -131,6 +131,26 @@ jobs:
       - name: Build SWF ExportAssets candidate index
         run: python3 tools/build_asset_index.py --manifest build/as2-probe/swf-manifest.json --output build/as2-probe/asset-index.json
 
+      - name: Cross-reference zero-ShowFrame sprites with verified AS2 class paths
+        run: |
+          python3 tools/build_zero_frame_as2_class_links.py \
+            --manifest build/as2-probe/swf-manifest.json \
+            --asset-index build/as2-probe/asset-index.json \
+            --export-index build/as2-probe/script-export-index.json \
+            --output build/as2-probe/zero-frame-as2-class-links.json
+          python3 - <<'PYTEST'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "zero-frame-as2-class-links.json").read_text(encoding="utf-8"))
+          if sum(d["class_path_classifications"].values()) != d["zero_sprite_export_count"]:
+              raise SystemExit("Zero-frame class path accounting mismatch")
+          if len(d["entries"]) != d["zero_sprite_export_count"]:
+              raise SystemExit("Zero-frame class link row accounting mismatch")
+          if d["verified_as2_script_count"] != 7054:
+              raise SystemExit("FFDec AS2 verified export coverage regression")
+          PYTEST
+
       - name: Verify AS2 sources and derive metadata-only semantic entry map
         run: |
           python3 tools/build_as2_semantic_index.py \
@@ -295,6 +315,7 @@ jobs:
             build/as2-probe/summary.json
             build/as2-probe/script-export-index.json
             build/as2-probe/as2-semantic-index.json
+            build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-crosswalk.json
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
