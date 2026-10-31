@@ -172,6 +172,49 @@ jobs:
                   raise SystemExit("Length-11 record shape/count mismatch")
           PY
 
+      - name: Check bounded ActionEnd tail operand compatibility (metadata only)
+        run: |
+          python3 tools/build_action_tail_opcode_compatibility.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --output build/swf-analysis/action-tail-opcode-compatibility.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          prior = json.loads((root / "as2-action-opcode-evidence.json").read_text(encoding="utf-8"))
+          result = json.loads((root / "action-tail-opcode-compatibility.json").read_text(encoding="utf-8"))
+          if result["source_sha256"] != prior["source_sha256"]:
+              raise SystemExit("Tail operand provenance mismatch")
+          if result["legacy_container_count"] != prior["legacy_container_count"]:
+              raise SystemExit("Tail operand legacy container coverage mismatch")
+          length11 = prior["trailing_length_histogram"].get("11", 0)
+          eligible = prior["trailing_length_11_candidate_record_shape_histogram"].get("L2>L2", 0)
+          if result["trailing_length_11_count"] != length11:
+              raise SystemExit("Tail operand length-11 sample mismatch")
+          if result["l2_l2_end_candidate_count"] != eligible:
+              raise SystemExit("Tail operand eligible shape mismatch")
+          if result["other_shape_count"] + eligible != length11:
+              raise SystemExit("Tail operand excluded-shape accounting mismatch")
+          if result["candidate_record_count"] != 2 * eligible:
+              raise SystemExit("Tail operand record accounting mismatch")
+          classes = result["candidate_record_class_histogram"]
+          expected = {"fixed_length_match", "fixed_length_mismatch",
+                      "push_payload_well_formed", "push_payload_invalid",
+                      "known_variable_payload_unchecked", "unlisted_long_opcode"}
+          if set(classes) != expected or sum(classes.values()) != 2 * eligible:
+              raise SystemExit("Tail operand classification coverage mismatch")
+          pairs = result["candidate_pair_class_histogram"]
+          if sum(pairs.values()) != eligible or any(
+                  len(pair.split(">")) != 2 or set(pair.split(">")) - expected
+                  for pair in pairs):
+              raise SystemExit("Tail operand pair accounting mismatch")
+          if sum(result["candidate_by_tag_code"].values()) != eligible:
+              raise SystemExit("Tail operand tag accounting mismatch")
+          if set(result["candidate_by_tag_code"]) - {"12", "59"}:
+              raise SystemExit("Unexpected tail operand tag type")
+          PY
+
       - name: Cross-reference original StartSound and script containers by timeline/frame
         run: |
           python3 tools/build_sound_script_crosswalk.py \
