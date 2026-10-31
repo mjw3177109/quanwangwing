@@ -68,19 +68,38 @@ def zero_position_mask(body, trailing):
     return "".join("0" if value == 0 else "x" for value in body[-trailing:]) if trailing else ""
 
 
-def walk_action_tail_candidate(body, trailing):
-    """Try a bounded ActionRecord walk after the FIRST ActionEnd; not semantic proof."""
+def walk_action_tail_shape_candidate(body, trailing):
+    """Walk bounded record *shapes* after first ActionEnd, never returning opcodes or payload."""
     if trailing < 0 or trailing > len(body):
         raise ValueError("Invalid trailing byte count")
     if not trailing:
-        return "none", 0
-    try:
-        counts, terminated, remainder = _records(body[-trailing:])
-    except ValueError:
-        return "invalid_record_boundary", 0
-    if terminated:
-        return ("terminated_at_end" if remainder == 0 else "terminated_with_remainder"), sum(counts.values())
-    return "no_terminator", sum(counts.values())
+        return "none", ()
+    tail = body[-trailing:]
+    pos = 0
+    shapes = []
+    while pos < len(tail):
+        opcode = tail[pos]
+        pos += 1
+        if opcode == 0:
+            return ("terminated_at_end" if pos == len(tail) else "terminated_with_remainder"), tuple(shapes)
+        if opcode >= 0x80:
+            if pos + 2 > len(tail):
+                return "invalid_record_boundary", ()
+            size = struct.unpack_from("<H", tail, pos)[0]
+            pos += 2
+            if pos + size > len(tail):
+                return "invalid_record_boundary", ()
+            shapes.append("L" + str(size))
+            pos += size
+        else:
+            shapes.append("S")
+    return "no_terminator", tuple(shapes)
+
+
+def walk_action_tail_candidate(body, trailing):
+    """Preserve the established (status, count) interface for secondary syntax probes."""
+    status, shapes = walk_action_tail_shape_candidate(body, trailing)
+    return status, len(shapes)
 
 
 def build_action_opcode_evidence(manifest, data):
@@ -104,6 +123,7 @@ def build_action_opcode_evidence(manifest, data):
     tail_11_tag_counts = Counter()
     tail_11_walk_status = Counter()
     tail_11_walk_record_counts = Counter()
+    tail_11_record_shapes = Counter()
     entries = []
     for tag, script in zip(selected, expected):
         for field in ("tag_code", "timeline", "frame", "offset_uncompressed", "length"):
@@ -130,7 +150,10 @@ def build_action_opcode_evidence(manifest, data):
             tail_11_masks[mask] += 1
             tail_11_zero_counts[mask.count("0")] += 1
             tail_11_tag_counts[tag["tag_code"]] += 1
-            walk_status, walk_count = walk_action_tail_candidate(body, trailing)
+            walk_status, shape = walk_action_tail_shape_candidate(body, trailing)
+            walk_count = len(shape)
+            if walk_status == "terminated_at_end":
+                tail_11_record_shapes[">".join(shape)] += 1
             tail_11_walk_status[walk_status] += 1
             if walk_status != "invalid_record_boundary":
                 tail_11_walk_record_counts[walk_count] += 1
@@ -162,6 +185,7 @@ def build_action_opcode_evidence(manifest, data):
             "trailing_length_11_candidate_walk_status": {name: tail_11_walk_status[name] for name in
                 ("terminated_at_end", "terminated_with_remainder", "no_terminator", "invalid_record_boundary")},
             "trailing_length_11_candidate_record_count_histogram": {str(n): tail_11_walk_record_counts[n] for n in sorted(tail_11_walk_record_counts)},
+            "trailing_length_11_candidate_record_shape_histogram": {shape: tail_11_record_shapes[shape] for shape in sorted(tail_11_record_shapes)},
             "entries": entries,
             "limitations": ["Only top-level legacy action records are counted; nested function bodies are not decoded.",
                             "Opcode 0x9B/0x8E is a lexical bytecode function record, not a verified callable function.",
@@ -170,6 +194,7 @@ def build_action_opcode_evidence(manifest, data):
                             "Nonzero/mixed tails are not parsed as independent action streams.",
                             "Length-11 masks reveal zero/nonzero positions only, not actual byte values or semantics.",
                             "Secondary ActionRecord walks after the first ActionEnd are syntactic probes only; arbitrary bytes can mimic valid records.",
+                            "Record shape histogram contains only short/long categories and payload lengths, not opcode values or executable semantics.",
                             "No bytecode, function names, ActionScript, image or audio bytes are emitted."]}
 
 

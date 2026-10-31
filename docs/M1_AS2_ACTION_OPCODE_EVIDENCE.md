@@ -30,3 +30,9 @@ python3 tools/build_as2_action_opcode_evidence.py --swf 拳皇wing1.4.swf --mani
 对 11 字节尾部**从首个顶层 ActionEnd 之后**尝试一次有界 ActionRecord 语法步进，统计四类候选：`terminated_at_end`、`terminated_with_remainder`、`no_terminator`、`invalid_record_boundary`。另统计语法步进成功样本的候选记录数量分布。测试及 Actions 验证各分类数量覆盖全部 11 字节尾部、有效样本记录数直方图闭合。
 
 这不是对尾部的执行、反编译或语义认定：任意字节可能碰巧符合 ActionRecord 边界，首个 ActionEnd 后的字节也可能属于非脚本结构。不会导出原始字节、操作码序列、脚本或素材。只有在与受限 FFDec 结果及 SWF 规范交叉验证后，才能解释这些结构候选。
+
+## 11 字节尾部候选记录的长度轮廓（M1 增量）
+
+在已有有界语法探针基础上，对**恰好在尾部末端终止**的样本增加 `trailing_length_11_candidate_record_shape_histogram`。每条候选记录只保留 `S`（短 ActionRecord）或 `L<长度>`（长 ActionRecord 的 payload 字节长度），按候选记录顺序用 `>` 连接；例如 `L2>L2`。不保存操作码值、payload、原始脚本或资产。其余三类探针状态不进入此直方图，CI 校验它与 `terminated_at_end` 计数闭合，并按候选记录数与原直方图交叉验证。
+
+**边界**：这只是 ActionRecord *语法长度轮廓*，并非操作码、函数、招式、可执行脚本或原版运行时行为的证明。不同原始字节可有相同轮廓；ActionEnd 之后的字节是否具有语义仍须对照 FFDec 受限解析结果。M1 继续保持未完成状态。
