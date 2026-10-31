@@ -22,6 +22,37 @@ INTEGER = re.compile(r"\s*(?P<number>\d+)\s*\)")
 QUOTED = re.compile(r"\s*(['\"])(?:\\.|(?!\1)[^\\])*?\1\s*\)", re.S)
 
 
+RECEIVER_KINDS = (
+    "this_direct", "root_direct", "parent_direct", "identifier_direct",
+    "member_chain_or_expression", "computed_or_expression",
+    "unqualified_or_unresolved",
+)
+
+
+def classify_receiver(masked: str, method_start: int) -> str:
+    """Classify lexical receiver shape without retaining source identifiers.
+
+    This is not a resolved MovieClip instance or a verified timeline target.
+    """
+    prefix = masked[max(0, method_start - 160):method_start]
+    dot = re.search(r"\.\s*$", prefix)
+    if dot is None:
+        return "unqualified_or_unresolved"
+    left = prefix[:dot.start()]
+    last = re.search(r"([A-Za-z_$][\w$]*)\s*$", left)
+    if last is None:
+        return "computed_or_expression"
+    earlier = left[:last.start()].rstrip()
+    if earlier.endswith((".", "]", ")")):
+        return "member_chain_or_expression"
+    name = last.group(1)
+    return {
+        "this": "this_direct",
+        "_root": "root_direct",
+        "_parent": "parent_direct",
+    }.get(name, "identifier_direct")
+
+
 def scan_calls(raw: bytes) -> list[dict]:
     source = raw.decode("utf-8", errors="replace")
     masked = mask_comments_strings(source)
@@ -46,6 +77,7 @@ def scan_calls(raw: bytes) -> list[dict]:
         calls.append({
             "line": bisect_right(newlines, match.start() - 1) + 1,
             "method": match.group("method"),
+            "receiver_kind": classify_receiver(masked, match.start()),
             "argument_kind": kind,
             "literal_frame_candidate": frame,
         })
@@ -72,6 +104,7 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict) -> dict:
     seen = set()
     result = []
     counts = Counter({"integer_literal": 0, "string_literal": 0, "dynamic_or_unresolved": 0})
+    receiver_counts = Counter({kind: 0 for kind in RECEIVER_KINDS})
     for role in roles:
         key = (role.get("character_candidate"), role.get("variant"))
         if key in seen:
@@ -93,6 +126,7 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict) -> dict:
             raise ValueError("Role script hash/length mismatch")
         calls = scan_calls(raw)
         counts.update(c["argument_kind"] for c in calls)
+        receiver_counts.update(c["receiver_kind"] for c in calls)
         result.append({
             "character_candidate": key[0],
             "variant": key[1],
@@ -106,10 +140,12 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict) -> dict:
         "role_variant_count": len(result),
         "call_candidate_count": sum(r["call_candidate_count"] for r in result),
         "argument_kind_counts": dict(counts),
+        "receiver_kind_counts": dict(receiver_counts),
         "roles": sorted(result, key=lambda r: (r["character_candidate"], r["variant"])),
         "limitations": [
             "Lexical gotoAndPlay/Stop matches do not prove runtime execution or animation semantics.",
             "A numeric argument is not verified against its actual target MovieClip timeline.",
+            "Receiver shapes are lexical only; no MovieClip identity or property binding is resolved.",
             "String labels and original ActionScript bodies are not published.",
             "Nested expressions, comments, regex literals and FFDec syntax anomalies can affect detection.",
         ],
@@ -130,7 +166,7 @@ def main() -> None:
     )
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({k: result[k] for k in ("role_variant_count", "call_candidate_count", "argument_kind_counts")}, ensure_ascii=False))
+    print(json.dumps({k: result[k] for k in ("role_variant_count", "call_candidate_count", "argument_kind_counts", "receiver_kind_counts")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

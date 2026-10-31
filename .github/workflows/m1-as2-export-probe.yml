@@ -222,6 +222,11 @@ jobs:
               raise SystemExit("Role timeline call variant coverage mismatch")
           if sum(d["argument_kind_counts"].values()) != d["call_candidate_count"]:
               raise SystemExit("Role timeline call argument classification mismatch")
+          if sum(d["receiver_kind_counts"].values()) != d["call_candidate_count"]:
+              raise SystemExit("Role timeline call receiver classification mismatch")
+          if any(c["receiver_kind"] not in d["receiver_kind_counts"]
+                 for role in d["roles"] for c in role["calls"]):
+              raise SystemExit("Role timeline call receiver class missing from summary")
           if sum(x["call_candidate_count"] for x in d["roles"]) != d["call_candidate_count"]:
               raise SystemExit("Role timeline call row accounting mismatch")
           if any(x["call_candidate_count"] != len(x["calls"]) for x in d["roles"]):
