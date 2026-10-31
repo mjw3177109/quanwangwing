@@ -60,6 +60,14 @@ def classify_trailing_bytes(body, trailing):
     return "mixed"
 
 
+
+def zero_position_mask(body, trailing):
+    """Record only zero/nonzero positions; never expose ActionScript or byte values."""
+    if trailing < 0 or trailing > len(body):
+        raise ValueError("Invalid trailing byte count")
+    return "".join("0" if value == 0 else "x" for value in body[-trailing:]) if trailing else ""
+
+
 def build_action_opcode_evidence(manifest, data):
     source = manifest.get("source", {}).get("sha256")
     if not isinstance(source, str) or len(source) != 64:
@@ -76,6 +84,9 @@ def build_action_opcode_evidence(manifest, data):
     tail_classes = Counter()
     tail_bytes = Counter()
     tail_lengths = Counter()
+    tail_11_masks = Counter()
+    tail_11_zero_counts = Counter()
+    tail_11_tag_counts = Counter()
     entries = []
     for tag, script in zip(selected, expected):
         for field in ("tag_code", "timeline", "frame", "offset_uncompressed", "length"):
@@ -97,6 +108,11 @@ def build_action_opcode_evidence(manifest, data):
         tail_bytes[tail_class] += trailing
         if trailing:
             tail_lengths[trailing] += 1
+        if trailing == 11:
+            mask = zero_position_mask(body, trailing)
+            tail_11_masks[mask] += 1
+            tail_11_zero_counts[mask.count("0")] += 1
+            tail_11_tag_counts[tag["tag_code"]] += 1
         entries.append({"timeline": tag["timeline"], "frame_zero_based": tag["frame"],
                         "tag_code": tag["tag_code"],
                         "offset_uncompressed": tag["offset_uncompressed"],
@@ -119,12 +135,16 @@ def build_action_opcode_evidence(manifest, data):
             "trailing_bytes_by_class": {name: tail_bytes[name] for name in
                                         ("none", "zero_only", "nonzero_only", "mixed")},
             "trailing_length_histogram": {str(n): tail_lengths[n] for n in sorted(tail_lengths)},
+            "trailing_length_11_zero_position_masks": {mask: tail_11_masks[mask] for mask in sorted(tail_11_masks)},
+            "trailing_length_11_zero_count_histogram": {str(n): tail_11_zero_counts[n] for n in sorted(tail_11_zero_counts)},
+            "trailing_length_11_by_tag_code": {str(n): tail_11_tag_counts[n] for n in sorted(tail_11_tag_counts)},
             "entries": entries,
             "limitations": ["Only top-level legacy action records are counted; nested function bodies are not decoded.",
                             "Opcode 0x9B/0x8E is a lexical bytecode function record, not a verified callable function.",
                             "AS1 and AS2 cannot be distinguished by tag/opcode counts alone; AS3 ABC is excluded.",
                             "Zero-only tails are padding candidates, not proven harmless padding.",
                             "Nonzero/mixed tails are not parsed as independent action streams.",
+                            "Length-11 masks reveal zero/nonzero positions only, not actual byte values or semantics.",
                             "No bytecode, function names, ActionScript, image or audio bytes are emitted."]}
 
 
