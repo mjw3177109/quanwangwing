@@ -392,6 +392,29 @@ jobs:
               raise SystemExit("Unverified assignment binding claim")
           PY
 
+      - name: Join hashed function assignment and cross-target body references
+        run: |
+          python3 tools/build_dynamic_attach_function_body_join.py \
+            --assignments build/as2-probe/dynamic-attach-assignment-sites.json \
+            --references build/as2-probe/attach-identifier-references.json \
+            --joined build/as2-probe/dynamic-attach-reference-join.json \
+            --output build/as2-probe/dynamic-attach-function-body-join.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("build/as2-probe")
+          d = json.loads((p / "dynamic-attach-function-body-join.json").read_text(encoding="utf-8"))
+          a = json.loads((p / "dynamic-attach-assignment-sites.json").read_text(encoding="utf-8"))
+          if d["identifier_occurrence_count"] != a["identifier_occurrence_count"]:
+              raise SystemExit("Function body join identifier accounting mismatch")
+          if d["function_assignment_candidate_count"] != a["rhs_class_counts"].get("function_expression_candidate", 0):
+              raise SystemExit("Function body assignment coverage mismatch")
+          if d["cross_target_body_reference_count"] < d["cross_target_member_property_count"]:
+              raise SystemExit("Function body member reference accounting mismatch")
+          if any(s["runtime_binding_verified"] for s in d["sites"]):
+              raise SystemExit("Unverified function binding claim")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -429,5 +452,6 @@ jobs:
             build/as2-probe/dynamic-attach-reference-join.json
             build/as2-probe/dynamic-attach-scope-pairs.json
             build/as2-probe/dynamic-attach-assignment-sites.json
+            build/as2-probe/dynamic-attach-function-body-join.json
           if-no-files-found: warn
           retention-days: 7
