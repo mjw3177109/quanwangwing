@@ -221,6 +221,24 @@ jobs:
               raise SystemExit("Initialization accounting mismatch")
           PY
 
+      - name: Join role candidates with zero-frame init metadata
+        run: |
+          python3 tools/build_role_zero_frame_init_join.py \
+            --roles build/as2-probe/role-reference-evidence.json \
+            --zero build/as2-probe/zero-frame-as2-class-links.json \
+            --output build/as2-probe/role-zero-frame-init-join.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("build/as2-probe")
+          r = json.loads((p / "role-reference-evidence.json").read_text(encoding="utf-8"))
+          j = json.loads((p / "role-zero-frame-init-join.json").read_text(encoding="utf-8"))
+          if j["source_sha256"] != r["source_sha256"] or j["role_variant_count"] != r["role_variant_count"]:
+              raise SystemExit("Role join source/count mismatch")
+          if j["role_init_reference_count"] != r["do_init_action_target_count"]:
+              raise SystemExit("Role init accounting mismatch")
+          PY
+
       - name: Trace AS2 attachMovie linkage against verified ExportAssets
         run: |
           python3 tools/build_runtime_attach_evidence.py \
@@ -327,6 +345,7 @@ jobs:
             build/as2-probe/script-export-index.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
+            build/as2-probe/role-zero-frame-init-join.json
             build/as2-probe/role-crosswalk.json
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
