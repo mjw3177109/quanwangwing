@@ -131,6 +131,15 @@ jobs:
               raise SystemExit("Legacy opcode count mismatch")
           if len(d["entries"]) != d["legacy_container_count"]:
               raise SystemExit("Legacy action entry coverage mismatch")
+          if sum(d["trailing_class_counts"].values()) != d["legacy_container_count"]:
+              raise SystemExit("Legacy action trailing class coverage mismatch")
+          if d["trailing_bytes_total"] != sum(d["trailing_bytes_by_class"].values()):
+              raise SystemExit("Legacy action trailing byte accounting mismatch")
+          if d["containers_with_trailing_bytes"] != sum(
+                  v for k, v in d["trailing_class_counts"].items() if k != "none"):
+              raise SystemExit("Legacy action trailing container count mismatch")
+          if d["containers_with_trailing_bytes"] != sum(d["trailing_length_histogram"].values()):
+              raise SystemExit("Legacy action trailing length histogram mismatch")
           PY
 
       - name: Cross-reference original StartSound and script containers by timeline/frame
