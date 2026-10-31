@@ -287,6 +287,40 @@ jobs:
               raise SystemExit("Unverified MovieClip binding claimed as verified")
           PY
 
+      - name: Cross-check original SWF FrameLabels against verified role string callsites
+        run: |
+          python3 tools/build_role_frame_label_evidence.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --role-crosswalk build/as2-probe/role-crosswalk.json \
+            --call-evidence build/as2-probe/role-timeline-call-evidence.json \
+            --timeline-index build/as2-probe/timeline-index.json \
+            --output build/as2-probe/role-frame-label-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "role-frame-label-evidence.json").read_text(encoding="utf-8"))
+          c = json.loads((root / "role-timeline-call-evidence.json").read_text(encoding="utf-8"))
+          t = json.loads((root / "timeline-index.json").read_text(encoding="utf-8"))
+          if d["source_sha256"] != c["source_sha256"] or d["source_sha256"] != t["source_sha256"]:
+              raise SystemExit("FrameLabel source provenance mismatch")
+          if d["role_variant_count"] != c["role_variant_count"] or d["call_candidate_count"] != c["call_candidate_count"]:
+              raise SystemExit("FrameLabel callsite coverage mismatch")
+          if d["string_literal_call_count"] != c["argument_kind_counts"]["string_literal"]:
+              raise SystemExit("FrameLabel string callsite count mismatch")
+          expected = {"own_unique_candidate", "own_ambiguous_candidate", "other_only_candidate",
+                      "not_found", "escaped_or_unparsed"}
+          if set(d["frame_label_match_categories"]) != expected:
+              raise SystemExit("Unexpected FrameLabel match categories")
+          if sum(d["frame_label_match_categories"].values()) != d["string_literal_call_count"]:
+              raise SystemExit("FrameLabel category accounting mismatch")
+          if sum(len(r["calls"]) for r in d["roles"]) != d["string_literal_call_count"]:
+              raise SystemExit("FrameLabel per-role accounting mismatch")
+          if any(c["runtime_binding_verified"] for r in d["roles"] for c in r["calls"]):
+              raise SystemExit("Unverified MovieClip runtime binding claimed")
+          PY
+
       - name: Trace direct role placements and DoInitAction targets
         run: |
           python3 tools/build_role_reference_evidence.py \
@@ -532,6 +566,7 @@ jobs:
             build/as2-probe/role-timeline-call-evidence.json
             build/as2-probe/role-call-scope-join.json
             build/as2-probe/role-scope-target-evidence.json
+            build/as2-probe/role-frame-label-evidence.json
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
             build/as2-probe/attach-argument-provenance.json
