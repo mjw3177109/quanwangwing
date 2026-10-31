@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from build_as2_action_opcode_evidence import _records, classify_trailing_bytes, zero_position_mask, build_action_opcode_evidence
+from build_as2_action_opcode_evidence import _records, classify_trailing_bytes, zero_position_mask, walk_action_tail_candidate, build_action_opcode_evidence
 
 
 def make_tag(code, body, offset, frame=0, target=None):
@@ -162,6 +162,41 @@ class OpcodeTests(unittest.TestCase):
         self.assertEqual(report['trailing_length_11_zero_count_histogram'], {})
         self.assertEqual(report['trailing_length_11_by_tag_code'], {})
 
+
+    def test_secondary_tail_record_walk_classifies_only_structure(self):
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00', 0), ('none', 0))
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00\x3d\x00', 2), ('terminated_at_end', 1))
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00\x00\x7f', 2), ('terminated_with_remainder', 0))
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00\x3d\x3d', 2), ('no_terminator', 2))
+        self.assertEqual(walk_action_tail_candidate(b'\x3d\x00\x96\x04\x00\x01', 4),
+                         ('invalid_record_boundary', 0))
+
+    def test_secondary_tail_record_walk_invalid_length_rejected(self):
+        for trailing in (-1, 4):
+            with self.subTest(trailing=trailing), self.assertRaises(ValueError):
+                walk_action_tail_candidate(b'abc', trailing)
+
+    def test_length_11_candidate_walk_histograms_close(self):
+        tails = (b'\x3d' * 10 + b'\x00',
+                 b'\x00' + b'\x3d' * 10,
+                 b'\x3d' * 11,
+                 b'\x96\xff\x7f' + bytes(8))
+        data = bytearray(b'FWS\x09' + bytes(4))
+        tags = []
+        for tail in tails:
+            raw, row = make_tag(12, b'\x3d\x00' + tail, len(data))
+            data.extend(raw)
+            tags.append(row)
+        scripts = [{k: v for k, v in t.items() if k != 'body_offset_uncompressed'} for t in tags]
+        report = build_action_opcode_evidence(
+            {'source': {'sha256': 'f' * 64}, 'tags': tags, 'scripts': scripts}, bytes(data))
+        self.assertEqual(report['trailing_length_histogram'], {'11': 4})
+        self.assertEqual(report['trailing_length_11_candidate_walk_status'], {
+            'terminated_at_end': 1, 'terminated_with_remainder': 1,
+            'no_terminator': 1, 'invalid_record_boundary': 1})
+        self.assertEqual(report['trailing_length_11_candidate_record_count_histogram'],
+                         {'0': 1, '10': 1, '11': 1})
+        self.assertNotIn('script_body', str(report))
 
 if __name__ == '__main__':
     unittest.main()
