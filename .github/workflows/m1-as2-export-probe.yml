@@ -233,6 +233,34 @@ jobs:
               raise SystemExit("Role timeline callsite row mismatch")
           PY
 
+      - name: Join verified role callsites with lexical function scopes
+        run: |
+          python3 tools/build_role_call_scope_join.py \
+            --role-crosswalk build/as2-probe/role-crosswalk.json \
+            --call-evidence build/as2-probe/role-timeline-call-evidence.json \
+            --output build/as2-probe/role-call-scope-join.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          j = json.loads((root / "role-call-scope-join.json").read_text(encoding="utf-8"))
+          c = json.loads((root / "role-timeline-call-evidence.json").read_text(encoding="utf-8"))
+          r = json.loads((root / "role-crosswalk.json").read_text(encoding="utf-8"))
+          if j["source_sha256"] != c["source_sha256"] or j["source_sha256"] != r["source_sha256"]:
+              raise SystemExit("Role call scope source provenance mismatch")
+          if j["role_variant_count"] != c["role_variant_count"] or j["call_candidate_count"] != c["call_candidate_count"]:
+              raise SystemExit("Role call scope coverage mismatch")
+          if sum(j["scope_relation_counts"].values()) != j["call_candidate_count"]:
+              raise SystemExit("Role call scope relation accounting mismatch")
+          if sum(j["scope_kind_counts"].values()) != j["call_candidate_count"]:
+              raise SystemExit("Role call scope kind accounting mismatch")
+          if sum(len(role["calls"]) for role in j["roles"]) != j["call_candidate_count"]:
+              raise SystemExit("Role call scope row accounting mismatch")
+          if any(call["scope_relation"] == "unique" and call["scope_candidate_count"] != 1
+                 for role in j["roles"] for call in role["calls"]):
+              raise SystemExit("Role call scope unique interval mismatch")
+          PY
+
       - name: Trace direct role placements and DoInitAction targets
         run: |
           python3 tools/build_role_reference_evidence.py \
@@ -476,6 +504,7 @@ jobs:
             build/as2-probe/role-zero-frame-init-join.json
             build/as2-probe/role-crosswalk.json
             build/as2-probe/role-timeline-call-evidence.json
+            build/as2-probe/role-call-scope-join.json
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
             build/as2-probe/attach-argument-provenance.json
