@@ -149,6 +149,15 @@ jobs:
           if any(len(mask) != 11 or set(mask) - {"0", "x"}
                  for mask in d["trailing_length_11_zero_position_masks"]):
               raise SystemExit("Invalid length-11 zero-position mask")
+          walk = d["trailing_length_11_candidate_walk_status"]
+          if set(walk) != {"terminated_at_end", "terminated_with_remainder",
+                           "no_terminator", "invalid_record_boundary"}:
+              raise SystemExit("Unexpected length-11 candidate walk status")
+          if sum(walk.values()) != eleven:
+              raise SystemExit("Length-11 candidate walk coverage mismatch")
+          if sum(d["trailing_length_11_candidate_record_count_histogram"].values()) != (
+                  eleven - walk["invalid_record_boundary"]):
+              raise SystemExit("Length-11 candidate record histogram mismatch")
           PY
 
       - name: Cross-reference original StartSound and script containers by timeline/frame
