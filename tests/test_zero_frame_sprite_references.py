@@ -69,11 +69,14 @@ class ZeroFrameSpriteReferencesTests(unittest.TestCase):
 
     def test_mixed_declared_zero_and_one_sprite_coverage(self):
         m = zero_fixture()
-        m["tags"].extend([
-            {"timeline": "main", "tag_code": 39, "character_id": 8,
-             "sprite_frame_count": 0, "offset_uncompressed": 111},
-            {"timeline": "sprite:8", "tag_code": 0, "offset_uncompressed": 113},
-        ])
+        main_end = next(i for i, t in enumerate(m["tags"])
+                        if t["timeline"] == "main" and t["tag_code"] == 0)
+        m["tags"][main_end:main_end] = [
+            {"timeline": "main", "tag_code": 39, "frame": 2,
+             "character_id": 8, "sprite_frame_count": 0, "offset_uncompressed": 75},
+            {"timeline": "sprite:8", "tag_code": 0, "frame": 0,
+             "offset_uncompressed": 76},
+        ]
         depth = depth_for(m)
         depth["timelines"].append({
             "timeline": "sprite:8", "declared_frames": 0,
@@ -90,8 +93,11 @@ class ZeroFrameSpriteReferencesTests(unittest.TestCase):
     def test_declared_zero_with_showframe_is_not_zero_showframe(self):
         m = zero_fixture()
         next(t for t in m["tags"] if t["tag_code"] == 39)["sprite_frame_count"] = 0
-        m["tags"].append({"timeline": "sprite:7", "tag_code": 1,
-                          "frame": 0, "offset_uncompressed": 121})
+        sprite_end = next(i for i, t in enumerate(m["tags"])
+                          if t["timeline"] == "sprite:7" and t["tag_code"] == 0)
+        m["tags"].insert(sprite_end, {"timeline": "sprite:7", "tag_code": 1,
+                                      "frame": 0, "offset_uncompressed": 45})
+        m["tags"][sprite_end + 1]["frame"] = 1
         self.assertEqual(report(m)["zero_show_frame_sprite_count"], 0)
 
     def test_nonzero_mismatch_not_misclassified(self):
