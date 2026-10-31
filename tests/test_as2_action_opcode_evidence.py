@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from build_as2_action_opcode_evidence import _records, build_action_opcode_evidence
+from build_as2_action_opcode_evidence import _records, classify_trailing_bytes, build_action_opcode_evidence
 
 
 def make_tag(code, body, offset, frame=0, target=None):
@@ -40,6 +40,44 @@ class OpcodeTests(unittest.TestCase):
         self.assertEqual(r['function_record_count_top_level'], 1)
         self.assertEqual(r['containers_with_action_end'], 2)
         self.assertEqual(r['interesting_opcode_counts']['CallFunction'], 1)
+        self.assertNotIn('script_body', str(r))
+
+    def test_tail_classes_do_not_interpret_payload(self):
+        self.assertEqual(classify_trailing_bytes(bytes.fromhex('3d00'), 0), 'none')
+        self.assertEqual(classify_trailing_bytes(bytes.fromhex('3d000000'), 2), 'zero_only')
+        self.assertEqual(classify_trailing_bytes(bytes.fromhex('3d000102'), 2), 'nonzero_only')
+        self.assertEqual(classify_trailing_bytes(bytes.fromhex('3d000100'), 2), 'mixed')
+
+    def test_tail_class_invalid_length_fails_closed(self):
+        for length in (-1, 9):
+            with self.subTest(length=length), self.assertRaises(ValueError):
+                classify_trailing_bytes(b'abc', length)
+
+    def test_tail_report_accounts_for_all_containers(self):
+        m, data = fixture()
+        r = build_action_opcode_evidence(m, data)
+        self.assertEqual(r['trailing_class_counts']['none'], 2)
+        self.assertEqual(sum(r['trailing_class_counts'].values()), r['legacy_container_count'])
+        self.assertEqual(r['trailing_bytes_total'], 0)
+        self.assertEqual(sum(r['trailing_bytes_by_class'].values()), 0)
+        self.assertEqual(r['trailing_length_histogram'], {})
+
+    def test_zero_and_mixed_tail_report(self):
+        data = bytearray(bytes.fromhex('46575309') + bytes(4))
+        tags = []
+        for code, body, target in ((12, bytes.fromhex('3d000000'), None),
+                                   (59, bytes.fromhex('07003d000100'), 7)):
+            raw, row = make_tag(code, body, len(data), target=target)
+            data.extend(raw)
+            tags.append(row)
+        scripts = [{k: v for k, v in t.items() if k != 'body_offset_uncompressed'} for t in tags]
+        manifest = {'source': {'sha256': 'f' * 64}, 'tags': tags, 'scripts': scripts}
+        r = build_action_opcode_evidence(manifest, bytes(data))
+        self.assertEqual(r['trailing_class_counts']['zero_only'], 1)
+        self.assertEqual(r['trailing_class_counts']['mixed'], 1)
+        self.assertEqual(r['trailing_bytes_total'], 4)
+        self.assertEqual(r['trailing_length_histogram'], {'2': 2})
+        self.assertEqual([e['trailing_bytes_class'] for e in r['entries']], ['zero_only', 'mixed'])
         self.assertNotIn('script_body', str(r))
 
     def test_truncated_long_action_rejected(self):
