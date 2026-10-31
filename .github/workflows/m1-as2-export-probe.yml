@@ -365,6 +365,33 @@ jobs:
               raise SystemExit("Unverified runtime binding claim")
           PY
 
+      - name: Audit lexical assignment syntax of unresolved attachMovie identifiers
+        run: |
+          python3 tools/build_dynamic_attach_assignment_sites.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --references build/as2-probe/attach-identifier-references.json \
+            --output build/as2-probe/dynamic-attach-assignment-sites.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("build/as2-probe")
+          d = json.loads((p / "dynamic-attach-assignment-sites.json").read_text(encoding="utf-8"))
+          r = json.loads((p / "attach-identifier-references.json").read_text(encoding="utf-8"))
+          if d["identifier_target_count"] != r["identifier_target_count"]:
+              raise SystemExit("Assignment target coverage mismatch")
+          if d["identifier_occurrence_count"] != r["identifier_occurrence_count"]:
+              raise SystemExit("Assignment reference coverage mismatch")
+          if sum(d["lhs_class_counts"].values()) != d["assignment_candidate_count"]:
+              raise SystemExit("Assignment LHS accounting mismatch")
+          if sum(d["rhs_class_counts"].values()) != d["assignment_candidate_count"]:
+              raise SystemExit("Assignment RHS accounting mismatch")
+          if len(d["sites"]) != d["assignment_candidate_count"]:
+              raise SystemExit("Assignment row accounting mismatch")
+          if any(s["runtime_binding_verified"] for s in d["sites"]):
+              raise SystemExit("Unverified assignment binding claim")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -401,5 +428,6 @@ jobs:
             build/as2-probe/attach-identifier-references.json
             build/as2-probe/dynamic-attach-reference-join.json
             build/as2-probe/dynamic-attach-scope-pairs.json
+            build/as2-probe/dynamic-attach-assignment-sites.json
           if-no-files-found: warn
           retention-days: 7
