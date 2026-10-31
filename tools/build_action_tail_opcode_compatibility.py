@@ -160,6 +160,85 @@ def audit_11_byte_tail_control_flow(body):
             tail_targets[category] += 1
     return tail_kinds, tail_targets, pre_kinds, pre_targets
 
+def audit_11_byte_tail_reachability(body):
+    """Bounded top-level Jump/If/fallthrough graph; NOT Flash runtime reachability.
+
+    Nested function bodies, WaitForFrame skip behavior and dynamic execution are
+    deliberately not modeled. Invalid branch targets are counted, not followed.
+    """
+    tail_start = len(body) - 11
+    if tail_start < 1 or classify_11_byte_tail(body[-11:]) is None:
+        raise ValueError("Expected bounded L2>L2>End tail")
+    nodes = {}
+    pos = 0
+    while pos < tail_start:
+        start = pos
+        opcode = body[pos]
+        pos += 1
+        if opcode == 0:
+            if pos != tail_start:
+                raise ValueError("First ActionEnd offset mismatch")
+            nodes[start] = (opcode, pos, None)
+            break
+        length = 0
+        if opcode >= 0x80:
+            if pos + 2 > tail_start - 1:
+                raise ValueError("Truncated pre-End action header")
+            length = struct.unpack_from("<H", body, pos)[0]
+            pos += 2
+            if pos + length > tail_start - 1:
+                raise ValueError("Pre-End action crosses first ActionEnd")
+        target = (pos + length + struct.unpack_from("<h", body, pos)[0]
+                  if opcode in BRANCH_CODES and length == 2 else None)
+        pos += length
+        nodes[start] = (opcode, pos, target)
+    if pos != tail_start:
+        raise ValueError("No first ActionEnd at expected offset")
+    for offset in (0, 5):
+        opcode = body[tail_start + offset]
+        target = (tail_start + offset + 5
+                  + struct.unpack_from("<h", body, tail_start + offset + 3)[0]
+                  if opcode in BRANCH_CODES else None)
+        nodes[tail_start + offset] = (opcode, tail_start + offset + 5, target)
+    nodes[tail_start + 10] = (0, len(body), None)
+
+    graph = {}
+    unresolved = 0
+    for start, (opcode, next_pos, target) in nodes.items():
+        if opcode in (0, 0x2A, 0x3E):  # ActionEnd / Throw / Return
+            edges = []
+        elif opcode in BRANCH_CODES:
+            edges = [target] if target in nodes else []
+            if target not in nodes:
+                unresolved += 1
+            if opcode == 0x9D and next_pos in nodes:
+                edges.append(next_pos)
+        else:
+            edges = [next_pos] if next_pos in nodes else []
+        graph[start] = edges
+
+    reached = set()
+    pending = [0]
+    while pending:
+        node = pending.pop()
+        if node in reached or node not in graph:
+            continue
+        reached.add(node)
+        pending.extend(graph[node])
+    boundaries = {tail_start, tail_start + 5, tail_start + 10}
+    pre_edges = [(start, target) for start, (opcode, _, target) in nodes.items()
+                 if start < tail_start - 1 and opcode in BRANCH_CODES
+                 and target in boundaries]
+    return {
+        "tail_record_count": sum(node in reached for node in (tail_start, tail_start + 5)),
+        "tail_end_reachable": tail_start + 10 in reached,
+        "first_end_reachable": tail_start - 1 in reached,
+        "pre_end_to_tail_edges": len(pre_edges),
+        "reachable_pre_end_to_tail_edges": sum(start in reached for start, _ in pre_edges),
+        "unresolved_branch_edges": unresolved,
+    }
+
+
 def build_tail_compatibility(manifest, data):
     source = manifest.get("source", {}).get("sha256")
     if not isinstance(source, str) or len(source) != 64:
@@ -179,6 +258,8 @@ def build_tail_compatibility(manifest, data):
     nonmatching_shape = 0
     tail_kinds, tail_targets = Counter(), Counter()
     pre_kinds, pre_targets = Counter(), Counter()
+    reachability = Counter()
+    reach_tail_end = reach_first_end = pre_tail_edges = reached_pre_tail_edges = unresolved_edges = 0
     for tag, script in zip(selected, expected):
         for key in ("tag_code", "timeline", "frame", "offset_uncompressed", "length"):
             if tag.get(key) != script.get(key):
@@ -203,6 +284,13 @@ def build_tail_compatibility(manifest, data):
             nonmatching_shape += 1
             continue
         candidate_k, candidate_t, prior_k, prior_t = audit_11_byte_tail_control_flow(body)
+        reach = audit_11_byte_tail_reachability(body)
+        reachability[str(reach["tail_record_count"])] += 1
+        reach_tail_end += int(reach["tail_end_reachable"])
+        reach_first_end += int(reach["first_end_reachable"])
+        pre_tail_edges += reach["pre_end_to_tail_edges"]
+        reached_pre_tail_edges += reach["reachable_pre_end_to_tail_edges"]
+        unresolved_edges += reach["unresolved_branch_edges"]
         tail_kinds.update(candidate_k)
         tail_targets.update(candidate_t)
         pre_kinds.update(prior_k)
@@ -226,11 +314,21 @@ def build_tail_compatibility(manifest, data):
         "pre_end_branch_count": sum(pre_kinds.values()),
         "pre_end_branch_kind_histogram": {k: pre_kinds[k] for k in ("jump", "if")},
         "pre_end_branch_target_histogram": {k: pre_targets[k] for k in PRE_END_TARGETS},
+        "candidate_tail_static_reachability_histogram": {
+            str(k): reachability[str(k)] for k in range(3)},
+        "candidate_tail_end_static_reachable_count": reach_tail_end,
+        "candidate_first_end_static_reachable_count": reach_first_end,
+        "candidate_pre_end_to_tail_boundary_edges": pre_tail_edges,
+        "candidate_reachable_pre_end_to_tail_boundary_edges": reached_pre_tail_edges,
+        "candidate_unresolved_branch_edges": unresolved_edges,
         "limitations": [
             "Only secondary 11-byte L2>L2>End syntax after the FIRST ActionEnd is probed.",
             "Known opcode framing does not prove Flash executes the trailing records.",
             "Variable-length payloads are not semantically decoded.",
             "A static branch target does not establish Flash runtime reachability.",
+            "Reachability is only a top-level Jump/If/fallthrough graph from the first record.",
+            "WaitForFrame skip behavior, nested bodies and dynamic execution are not modeled.",
+            "Unresolved branch targets are not followed; graph absence does not prove runtime unreachability.",
             "GotoFrame operands are frame numbers, not relative branch offsets.",
             "Only top-level pre-End branches are scanned; nested function bodies are excluded.",
             "No opcode values, operand bytes, ActionScript or media are emitted."

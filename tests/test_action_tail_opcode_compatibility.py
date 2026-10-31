@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from build_action_tail_opcode_compatibility import (
     push_payload_well_formed, classify_long_action, classify_11_byte_tail,
     build_tail_compatibility, audit_11_byte_tail_control_flow,
+    audit_11_byte_tail_reachability,
 )
 
 
@@ -121,6 +122,55 @@ class TailCompatibilityTests(unittest.TestCase):
         self.assertEqual(report["candidate_branch_target_histogram"]["record_boundary"], 4)
         self.assertEqual(report["pre_end_branch_count"], 0)
         self.assertNotIn("990200", str(report))
+
+    def test_static_graph_stops_at_first_action_end(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("3d00") + tail)
+        self.assertEqual(result["tail_record_count"], 0)
+        self.assertTrue(result["first_end_reachable"])
+        self.assertFalse(result["tail_end_reachable"])
+
+    def test_static_jump_skips_end_to_both_tail_records(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("990200010000") + tail)
+        self.assertEqual(result["tail_record_count"], 2)
+        self.assertFalse(result["first_end_reachable"])
+        self.assertEqual(result["reachable_pre_end_to_tail_edges"], 1)
+
+    def test_static_if_has_branch_and_fallthrough(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("9d0200010000") + tail)
+        self.assertEqual(result["tail_record_count"], 2)
+        self.assertTrue(result["first_end_reachable"])
+        self.assertEqual(result["pre_end_to_tail_edges"], 1)
+
+    def test_static_graph_rejects_interior_target(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("990200020000") + tail)
+        self.assertEqual(result["tail_record_count"], 0)
+        self.assertEqual(result["unresolved_branch_edges"], 1)
+
+    def test_static_graph_tail_end_only_not_counted_as_record(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("9902000b0000") + tail)
+        self.assertEqual(result["tail_record_count"], 0)
+        self.assertTrue(result["tail_end_reachable"])
+
+    def test_static_graph_return_is_terminal(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        result = audit_11_byte_tail_reachability(bytes.fromhex("3e00") + tail)
+        self.assertEqual(result["tail_record_count"], 0)
+        self.assertFalse(result["first_end_reachable"])
+
+    def test_static_report_counts_close_without_original_bytes(self):
+        tail = bytes.fromhex("8102000100810200020000")
+        manifest, data = synthetic_manifest([(12, tail), (59, tail)])
+        report = build_tail_compatibility(manifest, data)
+        self.assertEqual(report["candidate_tail_static_reachability_histogram"],
+                         {"0": 2, "1": 0, "2": 0})
+        self.assertEqual(report["candidate_first_end_static_reachable_count"], 2)
+        self.assertEqual(report["candidate_reachable_pre_end_to_tail_boundary_edges"], 0)
+        self.assertNotIn("810200", str(report))
 
     def test_wrong_init_target_fails_closed(self):
         tail = bytes.fromhex("9602000401990200010000")
