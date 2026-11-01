@@ -59,6 +59,42 @@ class ButtonStructureSourceAuditTests(unittest.TestCase):
         self.assertEqual(report["partition_status_counts"]["malformed_or_unsupported"], 1)
         self.assertEqual(set(report["partition_status_counts"]), set(STATUSES))
 
+    def test_partitioned_if_target_after_first_end(self):
+        report = summarize_partitions(*fixture(b"\\x9d\\x02\\x00\\x01\\x00\\x00\\x04\\x00"))
+        row = report["records"][0]
+        self.assertTrue(row["partitioned_pre_end_branch_audit_complete"])
+        self.assertEqual(row["partitioned_pre_end_branch_count"], 1)
+        self.assertEqual(row["partitioned_pre_end_branch_target_class_counts"]["post_end_record"], 1)
+        self.assertEqual(report["partitioned_pre_end_branch_count"], 1)
+        self.assertFalse(row["runtime_reachability_verified"])
+
+    def test_function_body_target_is_not_top_level_boundary(self):
+        function = b"\\x9b\\x06\\x00f\\x00\\x00\\x00\\x02\\x00"
+        payload = b"\\x99\\x02\\x00\\x09\\x00" + function + b"\\x04\\x04\\x00"
+        report = summarize_partitions(*fixture(payload))
+        row = report["records"][0]
+        self.assertEqual(row["declared_function_count"], 1)
+        self.assertEqual(row["partitioned_pre_end_branch_target_class_counts"]["function_body"], 1)
+        self.assertEqual(row["partitioned_pre_end_branch_target_class_counts"]["pre_end_record"], 0)
+        self.assertEqual(report["partitioned_pre_end_branch_target_class_totals"]["function_body"], 1)
+
+    def test_partitioned_invalid_branch_operand_length(self):
+        report = summarize_partitions(*fixture(b"\\x99\\x01\\x00\\x00\\x00"))
+        row = report["records"][0]
+        self.assertEqual(row["partitioned_pre_end_branch_target_class_counts"]["invalid_operand_length"], 1)
+        self.assertEqual(sum(row["partitioned_pre_end_branch_target_class_counts"].values()), 1)
+
+    def test_partitioned_record_interior_target(self):
+        report = summarize_partitions(*fixture(b"\\x99\\x02\\x00\\xfc\\xff\\x00"))
+        self.assertEqual(report["partitioned_pre_end_branch_target_class_totals"]["record_interior"], 1)
+
+    def test_no_end_does_not_claim_complete_branch_audit(self):
+        report = summarize_partitions(*fixture(b"\\x99\\x02\\x00\\x00\\x00"))
+        row = report["records"][0]
+        self.assertFalse(row["partitioned_pre_end_branch_audit_complete"])
+        self.assertEqual(report["partitioned_pre_end_branch_audits_complete"], 0)
+        self.assertEqual(report["partitioned_pre_end_branch_count"], 0)
+
     def test_duplicate_opcode_entry_rejected(self):
         buttons, opcodes, data = fixture(b"\x04\x00")
         opcodes["records"].append(opcodes["records"][0])
