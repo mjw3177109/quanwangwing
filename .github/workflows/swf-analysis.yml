@@ -224,6 +224,80 @@ jobs:
               raise SystemExit("Unverified runtime execution claimed")
           PY
 
+      - name: Audit source-verified partitioned button entry graphs (metadata only)
+        run: |
+          python3 tools/build_button_partitioned_graph_source_audit.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --buttons build/swf-analysis/button-action-evidence.json \
+            --opcodes build/swf-analysis/button-opcode-evidence.json \
+            --output build/swf-analysis/button-partitioned-entry-graph.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          m = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          s = json.loads((root / "button-structure-audit.json").read_text(encoding="utf-8"))
+          g = json.loads((root / "button-partitioned-entry-graph.json").read_text(encoding="utf-8"))
+          if g["source_sha256"] != m["source"]["sha256"] or g["source_sha256"] != s["source_sha256"]:
+              raise SystemExit("Partitioned entry graph source mismatch")
+          rows, statuses = g["records"], g["graph_status_counts"]
+          expected = {"verified_graph", "unsupported_nested_scope", "malformed_or_unsupported",
+                      "missing_top_level_end", "graph_rejected"}
+          if set(statuses) != expected or sum(statuses.values()) != g["embedded_action_record_count"]:
+              raise SystemExit("Partitioned entry graph status histogram mismatch")
+          if g["embedded_action_record_count"] != s["embedded_action_record_count"] or len(rows) != len(s["records"]):
+              raise SystemExit("Partitioned entry graph source coverage mismatch")
+          if [(r["button_character_id"], r["action_offset_uncompressed"]) for r in rows] != [
+              (r["button_character_id"], r["action_offset_uncompressed"]) for r in s["records"]
+          ]:
+              raise SystemExit("Partitioned entry graph source row order mismatch")
+          eligible = sum(r["status"] == "partitioned" and r["first_top_level_end_offset"] is not None
+                         for r in s["records"])
+          if statuses["verified_graph"] + statuses["graph_rejected"] != eligible:
+              raise SystemExit("Partitioned entry graph eligible coverage mismatch")
+          if statuses["missing_top_level_end"] != s["partitioned_without_top_level_end_count"]:
+              raise SystemExit("Partitioned entry graph missing End mismatch")
+          for name in ("unsupported_nested_scope", "malformed_or_unsupported"):
+              if statuses[name] != s["partition_status_counts"][name]:
+                  raise SystemExit("Partitioned entry graph rejection mismatch")
+          verified = [r for r in rows if r["graph_verified"]]
+          if len(verified) != g["graph_verified_count"] or len(verified) != statuses["verified_graph"]:
+              raise SystemExit("Partitioned entry graph verified count mismatch")
+          if any(r["graph_verified"] != (r["status"] == "verified_graph") for r in rows):
+              raise SystemExit("Partitioned entry graph verified flag mismatch")
+          if g["runtime_reachability_verified"] or any(r["runtime_reachability_verified"] for r in rows):
+              raise SystemExit("Unverified Flash runtime reachability claimed")
+          for total, field in (
+              ("visited_record_total_in_verified_graphs", "visited_record_count"),
+              ("visited_post_end_record_total_in_verified_graphs", "visited_post_end_record_count"),
+              ("graphs_with_syntactic_entry_path_to_post_end_record",
+               "syntactic_entry_path_to_post_end_record"),
+          ):
+              if g[total] != sum(r[field] for r in verified):
+                  raise SystemExit(f"Partitioned entry graph total mismatch: {total}")
+          classes = {"pre_end_record", "first_end", "post_end_record", "function_body",
+                     "record_interior", "before_stream", "after_stream"}
+          kinds = {"jump", "if"}
+          if set(g["visited_branch_target_class_totals"]) != classes or set(g["visited_branch_kind_totals"]) != kinds:
+              raise SystemExit("Partitioned entry graph histogram keys mismatch")
+          if sum(g["visited_branch_target_class_totals"].values()) != sum(g["visited_branch_kind_totals"].values()):
+              raise SystemExit("Partitioned entry graph branch histogram closure mismatch")
+          for r in verified:
+              if set(r["visited_branch_target_class_counts"]) != classes or set(r["visited_branch_kind_counts"]) != kinds:
+                  raise SystemExit("Partitioned entry graph row histogram keys mismatch")
+              if sum(r["visited_branch_target_class_counts"].values()) != sum(r["visited_branch_kind_counts"].values()):
+                  raise SystemExit("Partitioned entry graph row branch closure mismatch")
+          for key in classes:
+              if g["visited_branch_target_class_totals"][key] != sum(
+                  r["visited_branch_target_class_counts"][key] for r in verified):
+                  raise SystemExit("Partitioned entry graph class aggregate mismatch")
+          for key in kinds:
+              if g["visited_branch_kind_totals"][key] != sum(
+                  r["visited_branch_kind_counts"][key] for r in verified):
+                  raise SystemExit("Partitioned entry graph kind aggregate mismatch")
+          PY
+
       - name: Audit post-ActionEnd button trailing regions (metadata only)
         run: |
           python3 tools/build_button_tail_evidence.py \
