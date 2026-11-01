@@ -163,6 +163,48 @@ jobs:
               raise SystemExit("Button opcode unparsed byte mismatch")
           PY
 
+      - name: Audit original button ActionRecord structure (metadata only)
+        run: |
+          python3 tools/build_button_structure_audit.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --buttons build/swf-analysis/button-action-evidence.json \
+            --opcodes build/swf-analysis/button-opcode-evidence.json \
+            --output build/swf-analysis/button-structure-audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          m = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          b = json.loads((root / "button-action-evidence.json").read_text(encoding="utf-8"))
+          o = json.loads((root / "button-opcode-evidence.json").read_text(encoding="utf-8"))
+          a = json.loads((root / "button-structure-audit.json").read_text(encoding="utf-8"))
+          if a["source_sha256"] != m["source"]["sha256"] or a["source_sha256"] != o["source_sha256"]:
+              raise SystemExit("Structured button audit provenance mismatch")
+          n = b["embedded_action_record_count"]
+          statuses = a["partition_status_counts"]
+          if set(statuses) != {"partitioned", "unsupported_nested_scope", "malformed_or_unsupported"}:
+              raise SystemExit("Structured button status keys mismatch")
+          if a["embedded_action_record_count"] != n or len(a["records"]) != n or sum(statuses.values()) != n:
+              raise SystemExit("Structured button audit coverage mismatch")
+          rows = [r for r in a["records"] if r["status"] == "partitioned"]
+          if len(rows) != statuses["partitioned"] or any(not r["top_level_partition_verified"] for r in rows):
+              raise SystemExit("Structured button verified status mismatch")
+          if a["flat_first_end_disagreement_count"] != sum(not r["flat_first_end_matches_top_level"] for r in rows):
+              raise SystemExit("Structured/flat first End accounting mismatch")
+          if a["partitioned_without_top_level_end_count"] != sum(r["first_top_level_end_offset"] is None for r in rows):
+              raise SystemExit("Structured missing-End accounting mismatch")
+          for aggregate, field in (
+              ("declared_function_count_in_partitioned_records", "declared_function_count"),
+              ("declared_function_body_bytes_in_partitioned_records", "declared_function_body_byte_total"),
+              ("top_level_post_end_record_count_in_partitioned_records", "top_level_post_end_record_count"),
+          ):
+              if a[aggregate] != sum(r[field] for r in rows):
+                  raise SystemExit(f"Structured button accounting mismatch: {aggregate}")
+          if a["runtime_reachability_verified"] or any(r["runtime_reachability_verified"] for r in a["records"]):
+              raise SystemExit("Unverified runtime execution claimed")
+          PY
+
       - name: Audit post-ActionEnd button trailing regions (metadata only)
         run: |
           python3 tools/build_button_tail_evidence.py \
