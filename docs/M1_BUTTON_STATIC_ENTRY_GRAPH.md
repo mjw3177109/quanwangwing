@@ -69,3 +69,29 @@ visited records and are closed per button and in aggregate by CI. They are
 exception handler or skipped frame body executes. Original operands and
 script source remain excluded from public artifacts. Use the resulting
 per-opcode counts to prioritize private FFDec source cross-checks.
+
+
+## Bounded DefineFunction header evidence
+
+For syntactically visited `0x9B DefineFunction` ActionRecords, the
+metadata-only audit now validates the null-terminated function name and
+parameter strings, the parameter count, and the declared code-body length.
+**SWF ActionDefineFunction's code body follows the ActionRecord and is
+not included in its Length field.** We check the header's exact boundary
+and that the declared body fits within the enclosing action byte stream.
+The four classifications are `bounded_body`, `body_out_of_bounds`,
+`header_length_mismatch`, and `malformed_header`, with aggregate
+parameter/declared-body-byte totals only for bounded bodies. It does **not** publish names, operands,
+function bodies, or decompiled scripts. CI requires these counts to close
+against the already-verified visited `0x9b` opcode histogram.
+
+A structurally complete header is **not** evidence of function invocation,
+execution of the nested body, or valid Flash VM semantics. The next gate is
+private FFDec cross-checking of the original function bodies and callsites.
+
+This bounded header audit does not decode the nested function body.
+The existing top-level entry graph does not partition nested function
+body bytes from top-level ActionRecords, so it may over-approximate
+control-flow paths; previous top-level branch counts must not be treated
+as validated Flash VM paths.
+Reference: SWF File Format Specification v19, ActionDefineFunction (0x9B).
