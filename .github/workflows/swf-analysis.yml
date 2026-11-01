@@ -163,6 +163,40 @@ jobs:
               raise SystemExit("Button opcode unparsed byte mismatch")
           PY
 
+      - name: Audit post-ActionEnd button trailing regions (metadata only)
+        run: |
+          python3 tools/build_button_tail_evidence.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --buttons build/swf-analysis/button-action-evidence.json \
+            --opcodes build/swf-analysis/button-opcode-evidence.json \
+            --output build/swf-analysis/button-tail-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          opcodes = json.loads((root / "button-opcode-evidence.json").read_text(encoding="utf-8"))
+          tails = json.loads((root / "button-tail-evidence.json").read_text(encoding="utf-8"))
+          if tails["source_sha256"] != opcodes["source_sha256"]:
+              raise SystemExit("Button tail source mismatch")
+          if tails["embedded_action_record_count"] != opcodes["embedded_action_record_count"]:
+              raise SystemExit("Button tail record inventory mismatch")
+          if tails["trailing_record_count"] != opcodes["parse_status_counts"]["early_action_end_with_trailing_bytes"]:
+              raise SystemExit("Button tail count mismatch")
+          if tails["trailing_byte_total"] != opcodes["unparsed_tail_bytes"]:
+              raise SystemExit("Button tail byte count mismatch")
+          if tails["trailing_zero_byte_total"] + tails["trailing_nonzero_byte_total"] != tails["trailing_byte_total"]:
+              raise SystemExit("Button tail zero/nonzero accounting mismatch")
+          if sum(tails["trailing_byte_class_counts"].values()) != tails["trailing_record_count"]:
+              raise SystemExit("Button tail class accounting mismatch")
+          if sum(tails["post_end_candidate_status_counts"].values()) != tails["trailing_record_count"]:
+              raise SystemExit("Button tail candidate-status accounting mismatch")
+          if len(tails["tail_records"]) != tails["trailing_record_count"]:
+              raise SystemExit("Button tail detail coverage mismatch")
+          if any(x["runtime_reachability_verified"] for x in tails["tail_records"]):
+              raise SystemExit("Unverified post-ActionEnd runtime reachability claimed")
+          PY
+
       - name: Join verified button actions with static timeline placements (metadata only)
         run: |
           python3 tools/build_button_placement_crosswalk.py \
