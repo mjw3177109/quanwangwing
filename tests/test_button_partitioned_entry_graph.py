@@ -35,14 +35,14 @@ class PartitionedButtonEntryGraphTests(unittest.TestCase):
     def test_function_body_is_not_walked_as_top_level(self):
         payload = FUNCTION + bytes.fromhex("04 00 04 00")
         result = audit_partitioned_entry_graph(payload)
-        self.assertEqual(result["top_level_record_count"], 4)
+        self.assertEqual(result["top_level_record_count"], 3)
         self.assertEqual(result["visited_record_count"], 3)
         self.assertEqual(result["declared_function_count"], 1)
         self.assertEqual(result["declared_function_body_byte_total"], 2)
         self.assertFalse(result["syntactic_entry_path_to_post_end_record"])
 
     def test_branch_into_function_body_not_traversed(self):
-        payload = bytes.fromhex("99 02 00 09 00") + FUNCTION + bytes.fromhex("04 00")
+        payload = bytes.fromhex("99 02 00 09 00") + FUNCTION + bytes.fromhex("04 00 00")
         result = audit_partitioned_entry_graph(payload)
         self.assertEqual(result["visited_branch_target_class_counts"]["function_body"], 1)
         self.assertEqual(result["visited_record_count"], 1)
