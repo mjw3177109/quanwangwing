@@ -75,6 +75,35 @@ class ButtonPlacementCrosswalkTests(unittest.TestCase):
         timeline["timelines"][0]["display_events"].append({"kind": "remove", "character_id": 7})
         self.assertEqual(build_button_placement_crosswalk(manifest, buttons, timeline)["static_placement_count"], 1)
 
+    def test_same_frame_label_and_script_co_location_is_metadata_only(self):
+        manifest, buttons, timeline = fixtures()
+        timeline["timelines"][0]["frame_labels"] = [{"frame": 2, "label": "do-not-publish"}]
+        timeline["timelines"][0]["script_events"] = [{"frame": 2, "tag_code": 12}]
+        report = build_button_placement_crosswalk(manifest, buttons, timeline)
+        self.assertEqual(report["placement_same_frame_context_counts"]["both"], 1)
+        self.assertEqual(report["raw_button_condition_flags_histogram"], {"0x0008": 1})
+        self.assertNotIn("do-not-publish", str(report))
+
+    def test_label_only_and_script_only_contexts(self):
+        manifest, buttons, timeline = fixtures()
+        line = timeline["timelines"][0]
+        line["frame_labels"] = [{"frame": 2, "label": "private"}]
+        self.assertEqual(build_button_placement_crosswalk(manifest, buttons, timeline)["placement_same_frame_context_counts"]["label_only"], 1)
+        line["frame_labels"] = []
+        line["script_events"] = [{"frame": 2, "tag_code": 12}]
+        self.assertEqual(build_button_placement_crosswalk(manifest, buttons, timeline)["placement_same_frame_context_counts"]["script_only"], 1)
+
+    def test_no_context_is_neither(self):
+        report = build_button_placement_crosswalk(*fixtures())
+        self.assertEqual(report["placement_same_frame_context_counts"]["neither"], 1)
+        self.assertEqual(sum(report["placement_same_frame_context_counts"].values()), report["static_placement_count"])
+
+    def test_invalid_condition_flags_rejected(self):
+        manifest, buttons, timeline = fixtures()
+        buttons["buttons"][0]["embedded_action_records"][0]["condition_flags"] = 65536
+        with self.assertRaisesRegex(ValueError, "condition flags"):
+            build_button_placement_crosswalk(manifest, buttons, timeline)
+
 
 if __name__ == "__main__":
     unittest.main()
