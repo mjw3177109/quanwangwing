@@ -98,7 +98,7 @@ class ButtonTailEvidenceTests(unittest.TestCase):
                 self.assertFalse(row["runtime_reachability_verified"])
 
     def test_tail_action_end_kind_split_and_accounting(self):
-        report = audit(b"\\x9d\\x02\\x00\\x02\\x00\\x00\\x04\\x00")
+        report = audit(b"\x9d\x02\x00\x02\x00\x00\x04\x00")
         row = report["tail_records"][0]
         self.assertEqual(row["tail_action_end_branch_kind_counts"], {"jump": 0, "if": 1})
         self.assertEqual(report["tail_action_end_branch_kind_counts"], {"jump": 0, "if": 1})
