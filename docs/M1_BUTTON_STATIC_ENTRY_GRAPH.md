@@ -29,6 +29,14 @@ and invalid visited branch targets rather than silently declaring a complete
 analysis. No branch displacement, operand, original script or raw SWF byte is
 written to JSON.
 
+The invalid *visited* branch targets are now classified without exposing
+operand bytes or displacements: malformed two-byte branch operands,
+targets before the action stream, targets at/after its end, and targets
+inside (rather than at the start of) an ActionRecord. Each graph reports
+the four class counts, and CI verifies both per-graph and aggregate count
+closure. These categories help prioritize FFDec cross-checks but do not
+prove the underlying branch is executed by Flash.
+
 The report distinguishes a **syntactic top-level entry path candidate**
 from a matching branch target that may itself be unreachable from the
 action entry. Both are weaker than execution evidence. In particular,
