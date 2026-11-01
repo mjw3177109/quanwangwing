@@ -301,9 +301,23 @@ jobs:
               ("visited_define_function_parameter_total", "visited_define_function_parameter_total"),
               ("visited_define_function_declared_body_byte_total", "visited_define_function_declared_body_byte_total"),
               ("visited_anonymous_define_function_total", "visited_anonymous_define_function_count"),
+              ("visited_define_function_body_shadowed_record_total", "visited_define_function_body_shadowed_record_count"),
           ):
               if graph[total] != sum(row[field] for row in graph["graphs"]):
                   raise SystemExit(f"DefineFunction metadata accounting mismatch: {total}")
+          for total, predicate in (
+              ("graphs_with_first_end_inside_declared_function_body",
+               lambda row: row["visited_define_function_body_contains_first_end"]),
+              ("graphs_with_unverified_top_level_partition",
+               lambda row: not row["top_level_partition_verified"]),
+          ):
+              if graph[total] != sum(predicate(row) for row in graph["graphs"]):
+                  raise SystemExit(f"DefineFunction body partition accounting mismatch: {total}")
+          if any(row["top_level_partition_verified"] and (
+                  row["visited_define_function_body_shadowed_record_count"] > 0 or
+                  row["visited_define_function_body_contains_first_end"])
+                  for row in graph["graphs"]):
+              raise SystemExit("Shadowed DefineFunction bytes misrepresented as verified top-level")
           if graph["runtime_reachability_verified"] or any(
                   row["runtime_reachability_verified"] for row in graph["graphs"]):
               raise SystemExit("Unverified Flash runtime reachability claimed")
