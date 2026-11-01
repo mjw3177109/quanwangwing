@@ -18,6 +18,9 @@ from build_button_tail_evidence import build_button_tail_evidence, first_action_
 # These opcodes can change control flow in ways this bounded graph does not
 # interpret. Their presence is explicitly counted rather than silently ignored.
 UNMODELED_CONTROL_OPCODES = {0x8A, 0x8D, 0x8F, 0x94, 0x9B, 0x8E}
+INVALID_TARGET_CLASSES = (
+    "invalid_operand_length", "before_stream", "after_stream", "record_interior",
+)
 
 
 def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
@@ -53,7 +56,7 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
 
     queue = deque([0])
     visited = set()
-    invalid_branch_targets = 0
+    invalid_branch_target_classes = {key: 0 for key in INVALID_TARGET_CLASSES}
     reached_tail_branch_edges = 0
     reached_tail_end_branch_edges = 0
     unmodeled_reached = 0
@@ -70,7 +73,7 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
         successors = []
         if opcode in (0x99, 0x9D):
             if length != 2:
-                invalid_branch_targets += 1
+                invalid_branch_target_classes["invalid_operand_length"] += 1
             else:
                 displacement = struct.unpack_from("<h", payload, operand)[0]
                 target = end + displacement
@@ -82,7 +85,13 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
                         else:
                             reached_tail_branch_edges += 1
                 else:
-                    invalid_branch_targets += 1
+                    if target < 0:
+                        target_class = "before_stream"
+                    elif target >= len(payload):
+                        target_class = "after_stream"
+                    else:
+                        target_class = "record_interior"
+                    invalid_branch_target_classes[target_class] += 1
             if opcode == 0x9D and end in nodes:
                 successors.append(end)
         elif end in nodes:
@@ -101,7 +110,8 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
         "syntactic_entry_path_to_post_end_candidate": bool(tail_candidates),
         "visited_branch_edges_to_post_end_candidate": reached_tail_branch_edges,
         "visited_branch_edges_to_post_end_action_end": reached_tail_end_branch_edges,
-        "invalid_visited_branch_target_count": invalid_branch_targets,
+        "invalid_visited_branch_target_count": sum(invalid_branch_target_classes.values()),
+        "invalid_visited_branch_target_class_counts": invalid_branch_target_classes,
         "unmodeled_visited_control_opcode_count": unmodeled_reached,
         "runtime_reachability_verified": False,
     }
@@ -134,6 +144,9 @@ def build_button_static_entry_graph(manifest: dict, buttons: dict, opcodes: dict
             "post_end_candidate_status": row["post_end_candidate_status"],
             **graph,
         })
+    invalid_class_totals = {key: sum(
+        r["invalid_visited_branch_target_class_counts"][key] for r in rows
+    ) for key in INVALID_TARGET_CLASSES}
     return {
         "source_sha256": verified["source_sha256"],
         "trailing_record_count": verified["trailing_record_count"],
@@ -144,6 +157,7 @@ def build_button_static_entry_graph(manifest: dict, buttons: dict, opcodes: dict
             r["visited_post_end_candidate_record_count"] for r in rows),
         "invalid_visited_branch_target_total": sum(
             r["invalid_visited_branch_target_count"] for r in rows),
+        "invalid_visited_branch_target_class_totals": invalid_class_totals,
         "unmodeled_visited_control_opcode_total": sum(
             r["unmodeled_visited_control_opcode_count"] for r in rows),
         "runtime_reachability_verified": False,
@@ -151,6 +165,7 @@ def build_button_static_entry_graph(manifest: dict, buttons: dict, opcodes: dict
         "limitations": [
             "Syntactic top-level paths are NOT proof of Flash runtime execution.",
             "Conditional values, WaitForFrame, nested functions, With, Try and VM state are not modeled.",
+            "Invalid branch target classes describe byte positions, not VM execution or safety.",
             "No original operand bytes, ActionScript, artwork, SWF or audio are emitted.",
         ],
     }
