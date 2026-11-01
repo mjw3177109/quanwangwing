@@ -20,6 +20,7 @@
 - [x] 导出并统计所有 SWF tags（含 Sprite End 为 98,210；FFDec 展示 96,435）。
 - [ ] 识别 AS1/AS2/AS3 脚本数量、入口帧与关键函数。
   - 已加入 DefineButton2 内嵌 ButtonCondAction 容器的字节级清点和入口偏移审计；仍未区分 AS1/AS2 函数，也未完成关键函数和运行时语义映射。
+  - 已建立 DefineButton2 动作容器与静态 PlaceObject 引用的来源校验交叉表；静态引用不等于运行时按钮可达或输入行为。
 - [ ] 完成 characterId / symbolClass / sprite / button / sound 的语义映射（已生成 14,562 个定义与 715 个 ExportAssets 名称的索引，仍需解析实际引用和动作）。
 - [x] 生成可追溯的资源 metadata manifest 与 asset-index（无原版素材字节）。
 
