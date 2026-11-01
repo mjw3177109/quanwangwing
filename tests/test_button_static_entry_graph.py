@@ -87,14 +87,14 @@ class ButtonStaticEntryGraphTests(unittest.TestCase):
 
     def test_unmodeled_opcode_histogram_counts_only_visited_records(self):
         # Jump skips the first unmodeled opcode; the second is on the entry path.
-        r = graph(b"\\x99\\x02\\x00\\x04\\x00\\x8a\\x00\\x00\\x00\\x8d\\x00\\x00\\x00\\x00\\x04\\x00")
+        r = graph(b"\x99\x02\x00\x04\x00\x8a\x00\x00\x00\x8d\x00\x00\x00\x00\x04\x00")
         self.assertEqual(r["unmodeled_visited_control_opcode_count"], 1)
         self.assertEqual(r["unmodeled_visited_control_opcode_counts"]["0x8a"], 0)
         self.assertEqual(r["unmodeled_visited_control_opcode_counts"]["0x8d"], 1)
         self.assertEqual(sum(r["unmodeled_visited_control_opcode_counts"].values()), 1)
 
     def test_unmodeled_opcode_histogram_full_report_closes(self):
-        r = full_audit(b"\\x8a\\x00\\x00\\x00\\x00\\x04\\x00")
+        r = full_audit(b"\x8a\x00\x00\x00\x00\x04\x00")
         counts = r["unmodeled_visited_control_opcode_totals"]
         self.assertEqual(counts["0x8a"], 1)
         self.assertEqual(sum(counts.values()), r["unmodeled_visited_control_opcode_total"])
@@ -102,7 +102,7 @@ class ButtonStaticEntryGraphTests(unittest.TestCase):
         self.assertFalse(r["runtime_reachability_verified"])
 
     def test_unmodeled_opcode_histogram_excludes_unvisited_tail(self):
-        r = graph(b"\\x00\\x8a\\x00\\x00\\x00\\x00")
+        r = graph(b"\x00\x8a\x00\x00\x00\x00")
         self.assertEqual(r["unmodeled_visited_control_opcode_count"], 0)
         self.assertTrue(all(n == 0 for n in r["unmodeled_visited_control_opcode_counts"].values()))
 
