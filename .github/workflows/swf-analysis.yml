@@ -159,6 +159,11 @@ jobs:
               raise SystemExit("Button placement timeline accounting mismatch")
           if report["buttons_with_static_placement"] + report["buttons_without_static_placement"] != report["button_definition_count"]:
               raise SystemExit("Button placement coverage mismatch")
+          if sum(report["raw_button_condition_flags_histogram"].values()) != buttons["embedded_action_record_count"]:
+              raise SystemExit("Button raw condition flag coverage mismatch")
+          contexts = report["placement_same_frame_context_counts"]
+          if set(contexts) != {"neither", "label_only", "script_only", "both"} or sum(contexts.values()) != report["static_placement_count"]:
+              raise SystemExit("Button UI frame context accounting mismatch")
           PY
 
       - name: Build original legacy action opcode evidence (metadata only)

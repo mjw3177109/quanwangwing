@@ -32,3 +32,17 @@ input. It does not follow dynamic `attachMovie`, button event conditions,
 script execution or display-list lifetime. IDs, offsets, frames and depths are
 not original art or ActionScript source; the tool emits metadata only. Original
 SWF, exported scripts, graphics and audio remain separate from the public repo.
+
+## Raw button conditions and frame co-location
+
+The same metadata-only crosswalk now records a histogram of the **raw 16-bit
+ButtonCondAction condition flags** and classifies each verified static button
+placement according to whether a FrameLabel tag, a script-container tag, both,
+or neither appear on the **same timeline and zero-based frame**. CI verifies
+that raw-flag counts close against embedded action records and that the four
+frame-context categories close against the static placement count. No label
+strings or ActionScript bodies are included in the output.
+
+These are structural co-locations, not decoded mouse/keyboard conditions,
+reachable menu states, visible button instances, or evidence that a script
+actually executes. The original SWF and extracted media remain excluded.

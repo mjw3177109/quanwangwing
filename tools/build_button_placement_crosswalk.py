@@ -6,7 +6,7 @@ input handling, activation, or a reachable UI state.
 """
 import argparse
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 
@@ -35,6 +35,7 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
     if not isinstance(rows, list) or len(rows) != len(definitions) or buttons.get("define_button2_count") != len(rows):
         raise ValueError("Button evidence coverage mismatch")
     button_by_id = {}
+    condition_flags = Counter()
     for row in rows:
         cid = _number(row.get("character_id"), "button ID")
         tag = definition_by_id.get(cid)
@@ -47,6 +48,11 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
         count = _number(row.get("embedded_action_record_count"), "action record count")
         if count != len(row.get("embedded_action_records", [])):
             raise ValueError("Button action record mismatch")
+        for record in row["embedded_action_records"]:
+            flags = record.get("condition_flags")
+            if type(flags) is not int or not 0 <= flags <= 65535:
+                raise ValueError("Invalid raw ButtonCondAction condition flags")
+            condition_flags[f"0x{flags:04X}"] += 1
         button_by_id[cid] = row
     if set(button_by_id) != set(definition_by_id):
         raise ValueError("Button definition IDs not fully covered")
@@ -59,12 +65,17 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
     if len(tag_by_offset) != len(manifest["tags"]):
         raise ValueError("Duplicate SWF tag offset")
     placement_by_id = defaultdict(list)
+    frame_context = {}
     seen_timelines = set()
     for line in timelines:
         name = line.get("timeline")
         if not isinstance(name, str) or name in seen_timelines:
             raise ValueError("Duplicate or invalid timeline")
         seen_timelines.add(name)
+        frame_context[name] = (
+            {e.get("frame") for e in line.get("frame_labels", [])},
+            {e.get("frame") for e in line.get("script_events", [])},
+        )
         for event in line.get("display_events", []):
             if event.get("kind") != "place" or event.get("character_id") not in button_by_id:
                 continue
@@ -94,6 +105,13 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
             "static_placements": placements,
         })
     all_placements = [p for row in result_rows for p in row["static_placements"]]
+    same_frame_context = Counter({"neither": 0, "label_only": 0, "script_only": 0, "both": 0})
+    for placement in all_placements:
+        labels, scripts = frame_context[placement["timeline"]]
+        has_label = placement["frame_zero_based"] in labels
+        has_script = placement["frame_zero_based"] in scripts
+        kind = "both" if has_label and has_script else "label_only" if has_label else "script_only" if has_script else "neither"
+        same_frame_context[kind] += 1
     return {
         "source_sha256": source,
         "button_definition_count": len(result_rows),
@@ -102,6 +120,8 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
         "action_bearing_buttons_with_static_placement": sum(r["embedded_action_record_count"] > 0 and r["static_placement_count"] > 0 for r in result_rows),
         "buttons_without_static_placement": sum(r["static_placement_count"] == 0 for r in result_rows),
         "static_placement_count": len(all_placements),
+        "raw_button_condition_flags_histogram": dict(sorted(condition_flags.items())),
+        "placement_same_frame_context_counts": dict(same_frame_context),
         "action_bearing_static_placement_count": sum(r["static_placement_count"] for r in result_rows if r["embedded_action_record_count"] > 0),
         "main_timeline_placement_count": sum(p["timeline"] == "main" for p in all_placements),
         "nested_timeline_placement_count": sum(p["timeline"] != "main" for p in all_placements),
@@ -110,6 +130,7 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
             "Static PlaceObject references do not establish a live MovieClip, button activation, or UI reachability.",
             "Dynamic ActionScript attachment and conditional execution are not resolved.",
             "Action containers are not equivalent to commands, playable moves, or verified input mappings.",
+            "Raw condition flags and same-frame FrameLabel/script co-location do not establish UI behavior, visibility, or execution.",
             "Only character IDs, timeline IDs, frames, depths, offsets and counts are emitted; no original assets or scripts.",
         ],
     }
