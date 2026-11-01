@@ -201,6 +201,25 @@ jobs:
           ):
               if a[aggregate] != sum(r[field] for r in rows):
                   raise SystemExit(f"Structured button accounting mismatch: {aggregate}")
+          classes = {
+              "pre_end_record", "first_end", "post_end_record", "function_body",
+              "record_interior", "before_stream", "after_stream", "invalid_operand_length",
+          }
+          totals = a["partitioned_pre_end_branch_target_class_totals"]
+          if set(totals) != classes or sum(totals.values()) != a["partitioned_pre_end_branch_count"]:
+              raise SystemExit("Partitioned button branch target accounting mismatch")
+          if a["partitioned_pre_end_branch_audits_complete"] != sum(
+                  r["partitioned_pre_end_branch_audit_complete"] for r in rows):
+              raise SystemExit("Partitioned button branch completeness mismatch")
+          if any(r["partitioned_pre_end_branch_audit_complete"] !=
+                 (r["first_top_level_end_offset"] is not None) for r in rows):
+              raise SystemExit("Missing top-level End was treated as a complete branch audit")
+          if any(sum(r["partitioned_pre_end_branch_target_class_counts"].values()) !=
+                 r["partitioned_pre_end_branch_count"] for r in rows):
+              raise SystemExit("Partitioned button per-record branch accounting mismatch")
+          if any(totals[k] != sum(r["partitioned_pre_end_branch_target_class_counts"][k]
+                                  for r in rows) for k in classes):
+              raise SystemExit("Partitioned button branch histogram mismatch")
           if a["runtime_reachability_verified"] or any(r["runtime_reachability_verified"] for r in a["records"]):
               raise SystemExit("Unverified runtime execution claimed")
           PY
