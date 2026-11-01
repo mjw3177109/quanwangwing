@@ -133,6 +133,36 @@ jobs:
               raise SystemExit("Button action byte accounting mismatch")
           PY
 
+      - name: Audit original embedded button ActionRecord opcodes (metadata only)
+        run: |
+          python3 tools/build_button_opcode_evidence.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --buttons build/swf-analysis/button-action-evidence.json \
+            --output build/swf-analysis/button-opcode-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          m = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          b = json.loads((root / "button-action-evidence.json").read_text(encoding="utf-8"))
+          d = json.loads((root / "button-opcode-evidence.json").read_text(encoding="utf-8"))
+          if d["source_sha256"] != m["source"]["sha256"] or d["source_sha256"] != b["source_sha256"]:
+              raise SystemExit("Button opcode source provenance mismatch")
+          if d["button_definition_count"] != b["define_button2_count"]:
+              raise SystemExit("Button opcode definition coverage mismatch")
+          if d["embedded_action_record_count"] != b["embedded_action_record_count"] or len(d["records"]) != b["embedded_action_record_count"]:
+              raise SystemExit("Button opcode record coverage mismatch")
+          if d["embedded_action_bytes"] != b["embedded_action_bytes"]:
+              raise SystemExit("Button opcode byte accounting mismatch")
+          if sum(d["opcode_histogram"].values()) != d["parsed_opcode_count"]:
+              raise SystemExit("Button opcode histogram mismatch")
+          if sum(d["parse_status_counts"].values()) != d["embedded_action_record_count"]:
+              raise SystemExit("Button opcode parse-status coverage mismatch")
+          if sum(x["unparsed_tail_bytes"] for x in d["records"]) != d["unparsed_tail_bytes"]:
+              raise SystemExit("Button opcode unparsed byte mismatch")
+          PY
+
       - name: Join verified button actions with static timeline placements (metadata only)
         run: |
           python3 tools/build_button_placement_crosswalk.py \
