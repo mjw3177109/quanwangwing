@@ -458,6 +458,59 @@ jobs:
               raise SystemExit("Unverified Flash runtime reachability claimed")
           PY
 
+      - name: Compare legacy and partitioned button graphs (metadata only)
+        run: |
+          python3 tools/compare_button_entry_graphs.py \
+            --legacy build/swf-analysis/button-static-entry-graph.json \
+            --partitioned build/swf-analysis/button-partitioned-entry-graph.json \
+            --output build/swf-analysis/button-entry-graph-comparison.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          old = json.loads((root / "button-static-entry-graph.json").read_text(encoding="utf-8"))
+          new = json.loads((root / "button-partitioned-entry-graph.json").read_text(encoding="utf-8"))
+          r = json.loads((root / "button-entry-graph-comparison.json").read_text(encoding="utf-8"))
+          if r["source_sha256"] != old["source_sha256"] or r["source_sha256"] != new["source_sha256"]:
+              raise SystemExit("Graph comparison source provenance mismatch")
+          if (r["legacy_tail_graph_count"] != old["graph_record_count"] or
+                  r["partitioned_source_graph_count"] != new["embedded_action_record_count"] or
+                  len(r["records"]) != r["legacy_tail_graph_count"]):
+              raise SystemExit("Graph comparison source coverage mismatch")
+          rows = r["records"]
+          compared = [x for x in rows if x["comparison_status"] == "compared"]
+          skipped = [x for x in rows if x["comparison_status"] == "new_graph_unverified"]
+          if (len(compared) != r["compared_count"] or
+                  len(skipped) != r["new_graph_unverified_count"] or
+                  len(rows) != len(compared) + len(skipped)):
+              raise SystemExit("Graph comparison status closure mismatch")
+          if (r["comparison_status_counts"] !=
+                  {"compared": len(compared), "new_graph_unverified": len(skipped)} and
+                  r["comparison_status_counts"] !=
+                  {k: v for k, v in (("compared", len(compared)),
+                                     ("new_graph_unverified", len(skipped))) if v}):
+              raise SystemExit("Graph comparison status histogram mismatch")
+          for aggregate, field in (
+              ("visited_record_delta_total", "visited_record_delta"),
+              ("post_end_candidate_delta_total", "post_end_candidate_delta"),
+          ):
+              if r[aggregate] != sum(x[field] for x in compared):
+                  raise SystemExit(f"Graph comparison delta mismatch: {aggregate}")
+          for aggregate, field in (
+              ("changed_visited_record_count", "visited_record_delta"),
+              ("changed_post_end_candidate_count", "post_end_candidate_delta"),
+          ):
+              if r[aggregate] != sum(x[field] != 0 for x in compared):
+                  raise SystemExit(f"Graph comparison changed-count mismatch: {aggregate}")
+          if r["changed_syntactic_path_count"] != sum(x["syntactic_path_changed"] for x in compared):
+              raise SystemExit("Graph comparison path count mismatch")
+          if r["legacy_shadowed_function_body_record_total"] != sum(
+                  x["legacy_function_body_shadowed_record_count"] for x in rows):
+              raise SystemExit("Graph comparison shadowed-body count mismatch")
+          if r["runtime_reachability_verified"] or r["legacy_graph_replaced"]:
+              raise SystemExit("Unverified graph migration or runtime execution claimed")
+          PY
+
       - name: Join verified button actions with static timeline placements (metadata only)
         run: |
           python3 tools/build_button_placement_crosswalk.py \
