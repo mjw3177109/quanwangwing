@@ -534,14 +534,12 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.phase == 'assets'
         run: python3 tools/analyze_swf.py --phase assets --timeout 120 --output build/swf-analysis
 
-      - name: Upload metadata and logs only (no original assets/scripts)
+      - name: Upload JSON metadata only (no raw tag logs or source bytes)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: swf-analysis
           path: |
             build/swf-analysis/*.json
-            build/swf-analysis/*.log
-            build/swf-analysis/*.xml
           if-no-files-found: warn
           retention-days: 7
