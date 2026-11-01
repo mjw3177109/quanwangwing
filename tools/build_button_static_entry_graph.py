@@ -60,6 +60,7 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
     reached_tail_branch_edges = 0
     reached_tail_end_branch_edges = 0
     unmodeled_reached = 0
+    unmodeled_reached_counts = {f"0x{op:02x}": 0 for op in sorted(UNMODELED_CONTROL_OPCODES)}
     while queue:
         start = queue.popleft()
         if start in visited:
@@ -68,6 +69,7 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
         opcode, end, operand, length = nodes[start]
         if opcode in UNMODELED_CONTROL_OPCODES:
             unmodeled_reached += 1
+            unmodeled_reached_counts[f"0x{opcode:02x}"] += 1
         if opcode == 0:
             continue
         successors = []
@@ -113,6 +115,7 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
         "invalid_visited_branch_target_count": sum(invalid_branch_target_classes.values()),
         "invalid_visited_branch_target_class_counts": invalid_branch_target_classes,
         "unmodeled_visited_control_opcode_count": unmodeled_reached,
+        "unmodeled_visited_control_opcode_counts": unmodeled_reached_counts,
         "runtime_reachability_verified": False,
     }
 
@@ -160,6 +163,11 @@ def build_button_static_entry_graph(manifest: dict, buttons: dict, opcodes: dict
         "invalid_visited_branch_target_class_totals": invalid_class_totals,
         "unmodeled_visited_control_opcode_total": sum(
             r["unmodeled_visited_control_opcode_count"] for r in rows),
+        "unmodeled_visited_control_opcode_totals": {
+            f"0x{op:02x}": sum(r["unmodeled_visited_control_opcode_counts"][f"0x{op:02x}"]
+                                 for r in rows)
+            for op in sorted(UNMODELED_CONTROL_OPCODES)
+        },
         "runtime_reachability_verified": False,
         "graphs": rows,
         "limitations": [

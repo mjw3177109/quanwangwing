@@ -275,6 +275,17 @@ jobs:
           if any(totals[key] != sum(row["invalid_visited_branch_target_class_counts"][key]
                                      for row in graph["graphs"]) for key in classes):
               raise SystemExit("Button static entry invalid target histogram mismatch")
+          opcode_keys = {"0x8a", "0x8d", "0x8e", "0x8f", "0x94", "0x9b"}
+          opcode_totals = graph["unmodeled_visited_control_opcode_totals"]
+          if set(opcode_totals) != opcode_keys or sum(opcode_totals.values()) != graph["unmodeled_visited_control_opcode_total"]:
+              raise SystemExit("Unmodeled control opcode histogram closure mismatch")
+          for row in graph["graphs"]:
+              counts = row["unmodeled_visited_control_opcode_counts"]
+              if set(counts) != opcode_keys or sum(counts.values()) != row["unmodeled_visited_control_opcode_count"]:
+                  raise SystemExit("Unmodeled control opcode row closure mismatch")
+          if any(opcode_totals[key] != sum(row["unmodeled_visited_control_opcode_counts"][key]
+                                          for row in graph["graphs"]) for key in opcode_keys):
+              raise SystemExit("Unmodeled control opcode histogram aggregation mismatch")
           if graph["runtime_reachability_verified"] or any(
                   row["runtime_reachability_verified"] for row in graph["graphs"]):
               raise SystemExit("Unverified Flash runtime reachability claimed")

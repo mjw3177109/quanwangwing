@@ -57,3 +57,15 @@ Compare any entry-path candidates against FFDec's decompilation on the
 private runner, then investigate the AS1/AS2 function and UI timeline
 contexts. Only original verified frame, sprite, input and hitbox data may
 be used in the HTML5 game implementation.
+
+## Unmodeled control opcode breakdown
+
+The metadata report now separates the six top-level opcode classes whose
+control-flow semantics the bounded graph does not interpret: 0x8A
+(WaitForFrame), 0x8D (WaitForFrame2), 0x8E (DefineFunction2), 0x8F (Try),
+0x94 (With), and 0x9B (DefineFunction). Counts are limited to syntactically
+visited records and are closed per button and in aggregate by CI. They are
+**not** an interpreter trace and do not establish that any nested function,
+exception handler or skipped frame body executes. Original operands and
+script source remain excluded from public artifacts. Use the resulting
+per-opcode counts to prioritize private FFDec source cross-checks.
