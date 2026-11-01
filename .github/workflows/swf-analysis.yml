@@ -264,6 +264,17 @@ jobs:
           ):
               if graph[total] != sum(row[field] for row in graph["graphs"]):
                   raise SystemExit(f"Button static entry graph accounting mismatch: {total}")
+          classes = ("invalid_operand_length", "before_stream", "after_stream", "record_interior")
+          totals = graph["invalid_visited_branch_target_class_totals"]
+          if set(totals) != set(classes) or sum(totals.values()) != graph["invalid_visited_branch_target_total"]:
+              raise SystemExit("Button static entry invalid target class totals mismatch")
+          for row in graph["graphs"]:
+              counts = row["invalid_visited_branch_target_class_counts"]
+              if set(counts) != set(classes) or sum(counts.values()) != row["invalid_visited_branch_target_count"]:
+                  raise SystemExit("Button static entry invalid target row mismatch")
+          if any(totals[key] != sum(row["invalid_visited_branch_target_class_counts"][key]
+                                     for row in graph["graphs"]) for key in classes):
+              raise SystemExit("Button static entry invalid target histogram mismatch")
           if graph["runtime_reachability_verified"] or any(
                   row["runtime_reachability_verified"] for row in graph["graphs"]):
               raise SystemExit("Unverified Flash runtime reachability claimed")
