@@ -60,22 +60,22 @@ class ButtonStaticEntryGraphTests(unittest.TestCase):
         self.assertFalse(r["syntactic_entry_path_to_post_end_candidate"])
 
     def test_invalid_branch_target_is_before_stream(self):
-        r = graph(b"\\x99\\x02\\x00\\xf0\\xff\\x00")
+        r = graph(b"\x99\x02\x00\xf0\xff\x00")
         self.assertEqual(r["invalid_visited_branch_target_class_counts"]["before_stream"], 1)
         self.assertEqual(r["invalid_visited_branch_target_count"], 1)
 
     def test_invalid_branch_target_is_after_stream(self):
-        r = graph(b"\\x99\\x02\\x00\\x64\\x00\\x00")
+        r = graph(b"\x99\x02\x00\x64\x00\x00")
         self.assertEqual(r["invalid_visited_branch_target_class_counts"]["after_stream"], 1)
         self.assertEqual(r["invalid_visited_branch_target_count"], 1)
 
     def test_invalid_branch_target_is_record_interior(self):
-        r = graph(b"\\x99\\x02\\x00\\xfc\\xff\\x00")
+        r = graph(b"\x99\x02\x00\xfc\xff\x00")
         self.assertEqual(r["invalid_visited_branch_target_class_counts"]["record_interior"], 1)
         self.assertEqual(r["invalid_visited_branch_target_count"], 1)
 
     def test_invalid_branch_operand_length_is_separate_class(self):
-        r = graph(b"\\x99\\x01\\x00\\x00\\x00\\x04\\x00")
+        r = graph(b"\x99\x01\x00\x00\x00\x04\x00")
         self.assertEqual(r["invalid_visited_branch_target_class_counts"]["invalid_operand_length"], 1)
         self.assertEqual(sum(r["invalid_visited_branch_target_class_counts"].values()),
                          r["invalid_visited_branch_target_count"])
