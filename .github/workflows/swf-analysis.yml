@@ -231,6 +231,44 @@ jobs:
               raise SystemExit("Invalid button tail candidate branch count")
           PY
 
+      - name: Audit bounded top-level button entry paths (metadata only)
+        run: |
+          python3 tools/build_button_static_entry_graph.py \
+            --swf 拳皇wing1.4.swf \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --buttons build/swf-analysis/button-action-evidence.json \
+            --opcodes build/swf-analysis/button-opcode-evidence.json \
+            --tails build/swf-analysis/button-tail-evidence.json \
+            --output build/swf-analysis/button-static-entry-graph.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          tails = json.loads((root / "button-tail-evidence.json").read_text(encoding="utf-8"))
+          graph = json.loads((root / "button-static-entry-graph.json").read_text(encoding="utf-8"))
+          if graph["source_sha256"] != tails["source_sha256"]:
+              raise SystemExit("Button static entry graph source mismatch")
+          if graph["trailing_record_count"] != tails["trailing_record_count"]:
+              raise SystemExit("Button static entry graph record count mismatch")
+          if graph["graph_record_count"] != len(graph["graphs"]):
+              raise SystemExit("Button static entry graph row count mismatch")
+          if graph["graph_record_count"] != graph["trailing_record_count"]:
+              raise SystemExit("Button static entry graph coverage mismatch")
+          if graph["graphs_with_syntactic_entry_path_to_post_end_candidate"] != sum(
+                  row["syntactic_entry_path_to_post_end_candidate"] for row in graph["graphs"]):
+              raise SystemExit("Button static entry path accounting mismatch")
+          for total, field in (
+              ("visited_post_end_candidate_record_total", "visited_post_end_candidate_record_count"),
+              ("invalid_visited_branch_target_total", "invalid_visited_branch_target_count"),
+              ("unmodeled_visited_control_opcode_total", "unmodeled_visited_control_opcode_count"),
+          ):
+              if graph[total] != sum(row[field] for row in graph["graphs"]):
+                  raise SystemExit(f"Button static entry graph accounting mismatch: {total}")
+          if graph["runtime_reachability_verified"] or any(
+                  row["runtime_reachability_verified"] for row in graph["graphs"]):
+              raise SystemExit("Unverified Flash runtime reachability claimed")
+          PY
+
       - name: Join verified button actions with static timeline placements (metadata only)
         run: |
           python3 tools/build_button_placement_crosswalk.py \
