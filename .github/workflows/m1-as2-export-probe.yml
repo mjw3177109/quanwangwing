@@ -317,6 +317,34 @@ jobs:
               raise SystemExit("FrameLabel category accounting mismatch")
           if sum(len(r["calls"]) for r in d["roles"]) != d["string_literal_call_count"]:
               raise SystemExit("FrameLabel per-role accounting mismatch")
+          expected_kinds = {"main_only", "sprite_only", "main_and_sprite",
+                            "other_or_mixed", "no_match", "escaped_or_unparsed"}
+          kinds = d["target_timeline_kind_counts"]
+          if set(kinds) != expected_kinds or sum(kinds.values()) != d["string_literal_call_count"]:
+              raise SystemExit("FrameLabel target timeline-kind accounting mismatch")
+          observed_kinds = {kind: 0 for kind in expected_kinds}
+          for role in d["roles"]:
+              for call in role["calls"]:
+                  kind = call["target_timeline_kind"]
+                  if kind not in expected_kinds:
+                      raise SystemExit("Unexpected target timeline kind")
+                  observed_kinds[kind] += 1
+                  main_count = call["matching_main_timeline_count"]
+                  sprite_count = call["matching_sprite_timeline_count"]
+                  other_count = call["matching_other_timeline_count"]
+                  if (type(main_count) is not int or main_count not in (0, 1)
+                          or type(sprite_count) is not int or sprite_count < 0
+                          or type(other_count) is not int or other_count < 0
+                          or main_count + sprite_count + other_count != call["matching_timeline_count"]):
+                      raise SystemExit("FrameLabel distinct candidate timeline accounting mismatch")
+                  if (kind == "main_only" and (main_count, sprite_count, other_count) != (1, 0, 0)
+                          or kind == "sprite_only" and not (main_count == 0 and sprite_count > 0 and other_count == 0)
+                          or kind == "main_and_sprite" and not (main_count == 1 and sprite_count > 0 and other_count == 0)
+                          or kind == "other_or_mixed" and other_count == 0
+                          or kind in ("no_match", "escaped_or_unparsed") and call["matching_timeline_count"] != 0):
+                      raise SystemExit("FrameLabel target timeline kind inconsistent with candidates")
+          if observed_kinds != kinds:
+              raise SystemExit("FrameLabel per-call timeline kind mismatch")
           if any(c["runtime_binding_verified"] for r in d["roles"] for c in r["calls"]):
               raise SystemExit("Unverified MovieClip runtime binding claimed")
           PY

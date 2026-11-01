@@ -138,3 +138,55 @@ class RoleFrameLabelEvidenceTests(unittest.TestCase):
             self.assertIsNone(result["roles"][0]["calls"][0]["minimum_static_placement_hops"])
             self.assertFalse(result["roles"][0]["calls"][0]["runtime_binding_verified"])
 
+
+    def test_original_label_target_timeline_kinds_are_distinct_and_private(self):
+        source = (b'this.gotoAndPlay("idle"); this.gotoAndStop("elsewhere"); '
+                  b'this.gotoAndPlay("mainonly"); this.gotoAndStop("not_here"); '
+                  b'this.gotoAndStop("a\\\"b");')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = list(self.fixture(root, source))
+            args[3]["timelines"].append({"timeline": "main", "frame_labels": [
+                {"label": "elsewhere", "frame": 1},
+                {"label": "mainonly", "frame": 2}]})
+            args[3]["timeline_count"] = 3
+            result = build_evidence(root, *args)
+            self.assertEqual(result["target_timeline_kind_counts"], {
+                "main_only": 1, "sprite_only": 1, "main_and_sprite": 1,
+                "other_or_mixed": 0, "no_match": 1, "escaped_or_unparsed": 1})
+            calls = result["roles"][0]["calls"]
+            self.assertEqual([c["target_timeline_kind"] for c in calls],
+                             ["sprite_only", "main_and_sprite", "main_only",
+                              "no_match", "escaped_or_unparsed"])
+            self.assertEqual([c["matching_main_timeline_count"] for c in calls],
+                             [0, 1, 1, 0, 0])
+            self.assertEqual([c["matching_sprite_timeline_count"] for c in calls],
+                             [1, 1, 0, 0, 0])
+            self.assertFalse(any(c["runtime_binding_verified"] for c in calls))
+            output = json.dumps(result)
+            for original_label in ("idle", "elsewhere", "mainonly", "not_here"):
+                self.assertNotIn(original_label, output)
+
+    def test_duplicate_frame_labels_do_not_duplicate_candidate_timelines(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            result = build_evidence(root, *self.fixture(
+                root, b'this.gotoAndPlay("repeat");'))
+            row = result["roles"][0]["calls"][0]
+            self.assertEqual(row["matching_timeline_count"], 1)
+            self.assertEqual(row["matching_sprite_timeline_count"], 1)
+            self.assertEqual(row["own_timeline_label_occurrences"], 2)
+            self.assertEqual(row["target_timeline_kind"], "sprite_only")
+
+    def test_unrecognized_timeline_namespace_remains_unresolved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = list(self.fixture(root, b'this.gotoAndPlay("legacy");'))
+            args[3]["timelines"].append({"timeline": "custom:9",
+                                         "frame_labels": [{"label": "legacy", "frame": 1}]})
+            args[3]["timeline_count"] = 3
+            result = build_evidence(root, *args)
+            row = result["roles"][0]["calls"][0]
+            self.assertEqual(row["target_timeline_kind"], "other_or_mixed")
+            self.assertEqual(row["matching_other_timeline_count"], 1)
+            self.assertFalse(row["runtime_binding_verified"])
