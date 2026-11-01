@@ -20,6 +20,9 @@ SHA = re.compile(r"[0-9a-f]{64}\Z")
 PLAIN_LABEL = re.compile(r"\s*(['\"])([^'\"\\\r\n]*)\1\s*\)")
 CATEGORIES = ("own_unique_candidate", "own_ambiguous_candidate",
               "other_only_candidate", "not_found", "escaped_or_unparsed")
+PLACEMENT_CATEGORIES = ("own_timeline", "direct_child_candidate",
+                        "nested_descendant_candidate", "other_unreachable_static",
+                        "no_matching_label", "escaped_or_unparsed")
 
 
 def _literal_arguments(raw: bytes) -> list[str | None]:
@@ -56,6 +59,7 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
     if not isinstance(timelines, list) or len(timelines) != timeline.get("timeline_count"):
         raise ValueError("Timeline coverage mismatch")
     labels = defaultdict(list)
+    placed_sprites = defaultdict(set)
     seen_timeline = set()
     for item in timelines:
         key = item.get("timeline")
@@ -67,6 +71,17 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
             if not isinstance(label, str):
                 raise ValueError("Invalid SWF FrameLabel")
             labels[label].append(key)
+        for event in item.get("display_events", []):
+            if event.get("kind") != "place" or "character_id" not in event:
+                continue
+            child_id = event["character_id"]
+            if type(child_id) is not int or child_id <= 0:
+                raise ValueError("Invalid static PlaceObject character ID")
+            placed_sprites[key].add(f"sprite:{child_id}")
+    # Only actual DefineSprite timelines are graph vertices. A PlaceObject
+    # may reference a shape, button or other non-Sprite character instead.
+    adjacency = {key: {child for child in children if child in seen_timeline}
+                 for key, children in placed_sprites.items()}
     source_roles, call_roles = crosswalk.get("roles"), calls.get("roles")
     if (not isinstance(source_roles, list) or not isinstance(call_roles, list)
             or len(source_roles) != crosswalk.get("role_variant_count")
@@ -81,6 +96,7 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
         call_by_key[key] = role
     seen_roles = set()
     counts = Counter({c: 0 for c in CATEGORIES})
+    placement_counts = Counter({c: 0 for c in PLACEMENT_CATEGORIES})
     results = []
     checked_calls = 0
     for role in source_roles:
@@ -117,6 +133,15 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
         sprite = role.get("sprite_timeline")
         if sprite is not None and sprite.get("sprite_character_id") != sprite_id:
             raise ValueError("Role Sprite ID mismatch")
+        # Union-of-ever-placed static graph, NOT a runtime display list.
+        # A bounded BFS prevents infinite traversal through Sprite cycles.
+        distances = {own: 0}
+        queue = [own]
+        for node in queue:
+            for child in sorted(adjacency.get(node, ())):
+                if child not in distances:
+                    distances[child] = distances[node] + 1
+                    queue.append(child)
         rows = []
         for parsed_call, indexed_call, literal in zip(parsed, indexed, literal_args):
             for field in ("line", "method", "receiver_kind", "argument_kind"):
@@ -139,9 +164,29 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
             else:
                 category = "not_found"
             counts[category] += 1
+            matching_timelines = set(occurrences)
+            reachable_hops = [distances[t] for t in matching_timelines if t in distances]
+            minimum_hops = min(reachable_hops) if reachable_hops else None
+            if literal is None:
+                placement_relation = "escaped_or_unparsed"
+            elif not matching_timelines:
+                placement_relation = "no_matching_label"
+            elif minimum_hops == 0:
+                placement_relation = "own_timeline"
+            elif minimum_hops == 1:
+                placement_relation = "direct_child_candidate"
+            elif minimum_hops is not None:
+                placement_relation = "nested_descendant_candidate"
+            else:
+                placement_relation = "other_unreachable_static"
+            placement_counts[placement_relation] += 1
             rows.append({"line": parsed_call["line"], "method": parsed_call["method"],
                          "receiver_kind": parsed_call["receiver_kind"],
                          "match_category": category,
+                         "static_placement_relation": placement_relation,
+                         "matching_timeline_count": len(matching_timelines),
+                         "statically_reachable_timeline_count": len(reachable_hops),
+                         "minimum_static_placement_hops": minimum_hops,
                          "own_timeline_label_occurrences": own_count,
                          "other_timeline_label_occurrences": other_count,
                          "runtime_binding_verified": False})
@@ -150,16 +195,20 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
                         "verified_as2_script_sha256": digest,
                         "string_call_count": len(rows), "calls": rows})
     if (seen_roles != set(call_by_key) or checked_calls != calls.get("call_candidate_count")
-            or sum(counts.values()) != calls.get("argument_kind_counts", {}).get("string_literal")):
+            or sum(counts.values()) != calls.get("argument_kind_counts", {}).get("string_literal")
+            or sum(placement_counts.values()) != sum(counts.values())):
         raise ValueError("FrameLabel evidence accounting mismatch")
     return {"source_sha256": sha, "role_variant_count": len(results),
             "call_candidate_count": checked_calls,
             "string_literal_call_count": sum(counts.values()),
             "frame_label_match_categories": dict(counts),
+            "static_placement_relation_counts": dict(placement_counts),
             "roles": sorted(results, key=lambda x: (x["character_candidate"], x["variant"])),
             "limitations": [
                 "FrameLabel equality is lexical only; runtime receiver and target timeline are unverified.",
                 "String escapes and complex expressions are deliberately not resolved.",
+                "Static PlaceObject reachability is a union of possible placements; dynamic attachMovie, time, depth and runtime receiver bindings are not modeled.",
+                "An absent static path does NOT establish that a label or MovieClip is unreachable at runtime.",
                 "No original label text, script source, media or inferred action frames are emitted.",
             ]}
 
@@ -179,7 +228,8 @@ def main() -> None:
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"string_literal_call_count": result["string_literal_call_count"],
-                      "frame_label_match_categories": result["frame_label_match_categories"]}))
+                      "frame_label_match_categories": result["frame_label_match_categories"],
+                      "static_placement_relation_counts": result["static_placement_relation_counts"]}))
 
 
 if __name__ == "__main__":
