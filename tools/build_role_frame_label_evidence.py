@@ -23,6 +23,8 @@ CATEGORIES = ("own_unique_candidate", "own_ambiguous_candidate",
 PLACEMENT_CATEGORIES = ("own_timeline", "direct_child_candidate",
                         "nested_descendant_candidate", "other_unreachable_static",
                         "no_matching_label", "escaped_or_unparsed")
+TARGET_TIMELINE_KINDS = ("main_only", "sprite_only", "main_and_sprite",
+                         "other_or_mixed", "no_match", "escaped_or_unparsed")
 
 
 def _literal_arguments(raw: bytes) -> list[str | None]:
@@ -97,6 +99,7 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
     seen_roles = set()
     counts = Counter({c: 0 for c in CATEGORIES})
     placement_counts = Counter({c: 0 for c in PLACEMENT_CATEGORIES})
+    target_kind_counts = Counter({c: 0 for c in TARGET_TIMELINE_KINDS})
     results = []
     checked_calls = 0
     for role in source_roles:
@@ -165,6 +168,25 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
                 category = "not_found"
             counts[category] += 1
             matching_timelines = set(occurrences)
+            # Count distinct timelines, not duplicate FrameLabel occurrences.
+            # This is target *candidate* evidence, never a MovieClip binding.
+            main_matches = int("main" in matching_timelines)
+            sprite_matches = sum(bool(re.fullmatch(r"sprite:[1-9][0-9]*", t))
+                                 for t in matching_timelines)
+            other_matches = len(matching_timelines) - main_matches - sprite_matches
+            if literal is None:
+                target_kind = "escaped_or_unparsed"
+            elif not matching_timelines:
+                target_kind = "no_match"
+            elif other_matches:
+                target_kind = "other_or_mixed"
+            elif main_matches and sprite_matches:
+                target_kind = "main_and_sprite"
+            elif main_matches:
+                target_kind = "main_only"
+            else:
+                target_kind = "sprite_only"
+            target_kind_counts[target_kind] += 1
             reachable_hops = [distances[t] for t in matching_timelines if t in distances]
             minimum_hops = min(reachable_hops) if reachable_hops else None
             if literal is None:
@@ -185,6 +207,10 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
                          "match_category": category,
                          "static_placement_relation": placement_relation,
                          "matching_timeline_count": len(matching_timelines),
+                         "target_timeline_kind": target_kind,
+                         "matching_main_timeline_count": main_matches,
+                         "matching_sprite_timeline_count": sprite_matches,
+                         "matching_other_timeline_count": other_matches,
                          "statically_reachable_timeline_count": len(reachable_hops),
                          "minimum_static_placement_hops": minimum_hops,
                          "own_timeline_label_occurrences": own_count,
@@ -196,19 +222,22 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
                         "string_call_count": len(rows), "calls": rows})
     if (seen_roles != set(call_by_key) or checked_calls != calls.get("call_candidate_count")
             or sum(counts.values()) != calls.get("argument_kind_counts", {}).get("string_literal")
-            or sum(placement_counts.values()) != sum(counts.values())):
+            or sum(placement_counts.values()) != sum(counts.values())
+            or sum(target_kind_counts.values()) != sum(counts.values())):
         raise ValueError("FrameLabel evidence accounting mismatch")
     return {"source_sha256": sha, "role_variant_count": len(results),
             "call_candidate_count": checked_calls,
             "string_literal_call_count": sum(counts.values()),
             "frame_label_match_categories": dict(counts),
             "static_placement_relation_counts": dict(placement_counts),
+            "target_timeline_kind_counts": dict(target_kind_counts),
             "roles": sorted(results, key=lambda x: (x["character_candidate"], x["variant"])),
             "limitations": [
                 "FrameLabel equality is lexical only; runtime receiver and target timeline are unverified.",
                 "String escapes and complex expressions are deliberately not resolved.",
                 "Static PlaceObject reachability is a union of possible placements; dynamic attachMovie, time, depth and runtime receiver bindings are not modeled.",
                 "An absent static path does NOT establish that a label or MovieClip is unreachable at runtime.",
+                "Main versus Sprite target-kind counts describe label locations, not runtime destinations.",
                 "No original label text, script source, media or inferred action frames are emitted.",
             ]}
 
@@ -229,7 +258,8 @@ def main() -> None:
     a.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"string_literal_call_count": result["string_literal_call_count"],
                       "frame_label_match_categories": result["frame_label_match_categories"],
-                      "static_placement_relation_counts": result["static_placement_relation_counts"]}))
+                      "static_placement_relation_counts": result["static_placement_relation_counts"],
+                      "target_timeline_kind_counts": result["target_timeline_kind_counts"]}))
 
 
 if __name__ == "__main__":
