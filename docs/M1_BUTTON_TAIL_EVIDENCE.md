@@ -35,3 +35,27 @@ UI button behavior and AS1/AS2 semantics require separate evidence.
 
 The output contains no original ActionScript, operands, SWF bytes, art,
 music or audio. Do not publish original assets or source dumps.
+
+
+## Pre-End branch-target boundary audit
+
+For each of the verified post-ActionEnd regions, the same tool now walks
+top-level ActionJump (0x99) and ActionIf (0x9D) records *before* the first
+ActionEnd. It classifies their signed relative byte targets as:
+
+- Candidate post-End ActionRecord boundary, or post-End ActionEnd terminator.
+- Interior of a candidate post-End record.
+- First ActionEnd boundary.
+- Pre-End ActionRecord boundary or interior.
+- Outside the action byte range, or invalid branch operand length.
+
+The report emits only counts per class and aggregate counts; it does not
+publish branch displacements, operands, byte sequences or decompiled source.
+CI verifies that per-record and aggregate counts close exactly.
+
+**Evidence limit:** A matching byte boundary is not proof that Flash
+executes any post-End record. The audit does not model nested function
+bodies, conditional values, dynamic evaluation, WaitForFrame skip behavior
+or the Flash runtime. An absence of matching targets cannot prove
+runtime unreachability. The earlier separate syntactic post-End probe
+remains a candidate-only classification.
