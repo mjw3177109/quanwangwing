@@ -69,3 +69,19 @@ visited records and are closed per button and in aggregate by CI. They are
 exception handler or skipped frame body executes. Original operands and
 script source remain excluded from public artifacts. Use the resulting
 per-opcode counts to prioritize private FFDec source cross-checks.
+
+
+## Bounded DefineFunction header evidence
+
+For syntactically visited `0x9B DefineFunction` ActionRecords, the
+metadata-only audit now validates the null-terminated function name and
+parameter strings, the parameter count, and the declared code-body length
+against the enclosing ActionRecord operand boundary. It reports only
+`complete`, `code_size_mismatch`, or `malformed_header` counts and
+aggregate parameter/body-byte totals. It does **not** publish names, operands,
+function bodies, or decompiled scripts. CI requires these counts to close
+against the already-verified visited `0x9b` opcode histogram.
+
+A structurally complete header is **not** evidence of function invocation,
+execution of the nested body, or valid Flash VM semantics. The next gate is
+private FFDec cross-checking of the original function bodies and callsites.
