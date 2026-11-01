@@ -68,6 +68,7 @@ def compare_entry_graphs(legacy: dict, partitioned: dict) -> dict:
     compared = skipped = changed_paths = changed_visits = changed_post_end = 0
     visit_delta = post_end_delta = shadowed_legacy = 0
     status_counts = Counter()
+    difference_classes = Counter()
     rows = []
     for key, old in old_index.items():
         new = new_index[key]
@@ -100,6 +101,15 @@ def compare_entry_graphs(legacy: dict, partitioned: dict) -> dict:
             new_path = _flag(new["syntactic_entry_path_to_post_end_record"],
                              "new syntactic path")
             dv, dt = new_visits - old_visits, new_tail - old_tail
+            # Numeric triage only: a matching shadowed-body count is not
+            # proof that FFDec or the Flash VM executes the same path.
+            if dv == 0 and dt == 0 and old_path == new_path:
+                difference_class = "unchanged"
+            elif shadowed > 0 and dv == -shadowed and dt == 0 and old_path == new_path:
+                difference_class = "shadowed_body_only_candidate"
+            else:
+                difference_class = "requires_source_review"
+            difference_classes[difference_class] += 1
             visit_delta += dv
             post_end_delta += dt
             changed_visits += int(dv != 0)
@@ -108,6 +118,7 @@ def compare_entry_graphs(legacy: dict, partitioned: dict) -> dict:
             compared += 1
             row.update({
                 "comparison_status": "compared",
+                "difference_class": difference_class,
                 "legacy_visited_records": old_visits,
                 "partitioned_visited_records": new_visits,
                 "visited_record_delta": dv,
@@ -141,12 +152,14 @@ def compare_entry_graphs(legacy: dict, partitioned: dict) -> dict:
         "visited_record_delta_total": visit_delta,
         "post_end_candidate_delta_total": post_end_delta,
         "comparison_status_counts": dict(status_counts),
+        "comparison_difference_class_counts": dict(difference_classes),
         "runtime_reachability_verified": False,
         "legacy_graph_replaced": False,
         "records": rows,
         "limitations": [
             "Only legacy tail-subset rows with verified partitioned graphs are comparable.",
             "Differences reflect syntactic parser boundaries, not Flash runtime behavior.",
+            "Shadowed-body-only is a numeric candidate, not proven causality; FFDec review is required.",
             "Unverified partitioned graphs are excluded from numerical comparisons.",
             "Original SWF, ActionScript, operands, images and audio are not emitted.",
         ],

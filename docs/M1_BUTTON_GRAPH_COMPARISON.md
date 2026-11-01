@@ -47,3 +47,15 @@ partitioned-only row now fails the comparison instead of escaping checks merely
 because it has no legacy counterpart. Three synthetic regression tests cover
 these cases; the hourly workflow already runs the complete Python test suite.
 This is metadata validation, not new evidence of game behavior.
+
+## Numeric difference triage (not runtime verification)
+
+Verified source-matched rows now receive a metadata-only `difference_class`:
+`unchanged` means all three compared values match;
+`shadowed_body_only_candidate` means the visit delta equals the negative
+legacy shadowed-function-body count, while post-End count and syntactic path
+remain unchanged; all other differences are `requires_source_review`.
+Unverified rows have **no** difference class and are excluded from the
+histogram. CI checks that all compared rows are classified exactly once.
+A shadowed-body-only numeric match is **not** proof of causality or Flash
+runtime behavior: verify with restricted FFDec source before migration.

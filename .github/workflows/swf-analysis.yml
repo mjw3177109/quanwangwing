@@ -504,6 +504,15 @@ jobs:
                   raise SystemExit(f"Graph comparison changed-count mismatch: {aggregate}")
           if r["changed_syntactic_path_count"] != sum(x["syntactic_path_changed"] for x in compared):
               raise SystemExit("Graph comparison path count mismatch")
+          allowed = {"unchanged", "shadowed_body_only_candidate", "requires_source_review"}
+          classes = r["comparison_difference_class_counts"]
+          if (not set(classes) <= allowed or sum(classes.values()) != len(compared)
+                  or any(x.get("difference_class") not in allowed for x in compared)
+                  or any("difference_class" in x for x in skipped)):
+              raise SystemExit("Graph comparison difference triage coverage mismatch")
+          if classes != {key: sum(x["difference_class"] == key for x in compared)
+                         for key in allowed if any(x["difference_class"] == key for x in compared)}:
+              raise SystemExit("Graph comparison difference triage histogram mismatch")
           if r["legacy_shadowed_function_body_record_total"] != sum(
                   x["legacy_function_body_shadowed_record_count"] for x in rows):
               raise SystemExit("Graph comparison shadowed-body count mismatch")
