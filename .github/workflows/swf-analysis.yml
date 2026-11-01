@@ -111,6 +111,28 @@ jobs:
               raise SystemExit("Script entry accounting mismatch")
           PY
 
+      - name: Audit embedded DefineButton2 action containers (metadata only)
+        run: |
+          python3 tools/build_button_action_evidence.py --swf 拳皇wing1.4.swf --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/button-action-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          manifest = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          result = json.loads((root / "button-action-evidence.json").read_text(encoding="utf-8"))
+          if result["source_sha256"] != manifest["source"]["sha256"]:
+              raise SystemExit("Button action SWF provenance mismatch")
+          if result["define_button2_count"] != manifest["tag_counts_by_code"].get("34", 0):
+              raise SystemExit("Button action definition coverage mismatch")
+          if result["buttons_with_actions"] + result["buttons_without_actions"] != result["define_button2_count"]:
+              raise SystemExit("Button action classification mismatch")
+          if sum(row["embedded_action_record_count"] for row in result["buttons"]) != result["embedded_action_record_count"]:
+              raise SystemExit("Button action record accounting mismatch")
+          if sum(sum(x["action_bytes_including_terminator"] for x in row["embedded_action_records"])
+                 for row in result["buttons"]) != result["embedded_action_bytes"]:
+              raise SystemExit("Button action byte accounting mismatch")
+          PY
+
       - name: Build original legacy action opcode evidence (metadata only)
         run: |
           python3 tools/build_as2_action_opcode_evidence.py \
