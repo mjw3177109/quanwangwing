@@ -286,7 +286,7 @@ jobs:
           if any(opcode_totals[key] != sum(row["unmodeled_visited_control_opcode_counts"][key]
                                           for row in graph["graphs"]) for key in opcode_keys):
               raise SystemExit("Unmodeled control opcode histogram aggregation mismatch")
-          function_keys = {"complete", "code_size_mismatch", "malformed_header"}
+          function_keys = {"bounded_body", "body_out_of_bounds", "header_length_mismatch", "malformed_header"}
           function_totals = graph["visited_define_function_header_status_totals"]
           if set(function_totals) != function_keys or sum(function_totals.values()) != opcode_totals["0x9b"]:
               raise SystemExit("DefineFunction header classification coverage mismatch")
