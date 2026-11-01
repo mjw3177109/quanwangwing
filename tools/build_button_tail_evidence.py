@@ -100,6 +100,8 @@ def audit_pre_end_branch_targets(payload: bytes, first_end: int) -> dict:
 
     classes = Counter({k: 0 for k in BRANCH_TARGET_CLASSES})
     kinds = Counter({"jump": 0, "if": 0})
+    tail_record_kinds = Counter({"jump": 0, "if": 0})
+    tail_end_kinds = Counter({"jump": 0, "if": 0})
     for opcode, target in branches:
         kinds["jump" if opcode == 0x99 else "if"] += 1
         if target is None:
@@ -121,11 +123,17 @@ def audit_pre_end_branch_targets(payload: bytes, first_end: int) -> dict:
         else:
             cls = "outside_after"
         classes[cls] += 1
+        if cls == "tail_record_boundary":
+            tail_record_kinds["jump" if opcode == 0x99 else "if"] += 1
+        elif cls == "tail_action_end":
+            tail_end_kinds["jump" if opcode == 0x99 else "if"] += 1
     return {
         "pre_end_branch_count": len(branches),
         "pre_end_branch_kind_counts": dict(kinds),
         "pre_end_branch_target_class_counts": dict(classes),
         "pre_end_branch_to_tail_record_boundary_count": classes["tail_record_boundary"],
+        "tail_record_boundary_branch_kind_counts": dict(tail_record_kinds),
+        "tail_action_end_branch_kind_counts": dict(tail_end_kinds),
         "runtime_reachability_verified": False,
     }
 
@@ -152,6 +160,8 @@ def build_button_tail_evidence(manifest: dict, buttons: dict, opcode_report: dic
     nonzero_total = 0
     branch_classes = Counter({k: 0 for k in BRANCH_TARGET_CLASSES})
     branch_kinds = Counter({"jump": 0, "if": 0})
+    tail_record_kinds = Counter({"jump": 0, "if": 0})
+    tail_end_kinds = Counter({"jump": 0, "if": 0})
     for event in verified["records"]:
         if event["parse_status"] != "early_action_end_with_trailing_bytes":
             continue
@@ -189,6 +199,8 @@ def build_button_tail_evidence(manifest: dict, buttons: dict, opcode_report: dic
         })
         branch_classes.update(branch_audit["pre_end_branch_target_class_counts"])
         branch_kinds.update(branch_audit["pre_end_branch_kind_counts"])
+        tail_record_kinds.update(branch_audit["tail_record_boundary_branch_kind_counts"])
+        tail_end_kinds.update(branch_audit["tail_action_end_branch_kind_counts"])
         byte_classes[byte_class] += 1
         candidate_statuses[candidate_status] += 1
         zero_total += zeros
@@ -210,11 +222,13 @@ def build_button_tail_evidence(manifest: dict, buttons: dict, opcode_report: dic
         "pre_end_branch_kind_counts": dict(branch_kinds),
         "pre_end_branch_target_class_counts": dict(branch_classes),
         "pre_end_branch_to_tail_record_boundary_count": branch_classes["tail_record_boundary"],
+        "tail_record_boundary_branch_kind_counts": dict(tail_record_kinds),
+        "tail_action_end_branch_kind_counts": dict(tail_end_kinds),
         "tail_records": rows,
         "limitations": [
             "Post-ActionEnd bytes are unparsed trailing regions, not proven executable instructions.",
             "A syntactically valid candidate walk does not establish control-flow reachability.",
-            "Pre-End Jump/If targets are byte-boundary candidates only; nested bodies and runtime control flow are not modeled.",
+            "Pre-End Jump/If targets and branch-kind splits are syntactic only; nested bodies and runtime control flow are not modeled.",
             "No original operands, scripts, SWF, artwork or audio bytes are emitted.",
         ],
     }
