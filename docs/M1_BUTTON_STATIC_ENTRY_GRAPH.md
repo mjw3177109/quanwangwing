@@ -90,7 +90,8 @@ execution of the nested body, or valid Flash VM semantics. The next gate is
 private FFDec cross-checking of the original function bodies and callsites.
 
 This bounded header audit does not decode the nested function body.
-The existing top-level entry graph treats nested function body bytes as
-opaque/unmodeled and may over-approximate their control flow; previous
-top-level branch counts must not be treated as validated Flash VM paths.
+The existing top-level entry graph does not partition nested function
+body bytes from top-level ActionRecords, so it may over-approximate
+control-flow paths; previous top-level branch counts must not be treated
+as validated Flash VM paths.
 Reference: SWF File Format Specification v19, ActionDefineFunction (0x9B).
