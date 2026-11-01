@@ -95,3 +95,29 @@ body bytes from top-level ActionRecords, so it may over-approximate
 control-flow paths; previous top-level branch counts must not be treated
 as validated Flash VM paths.
 Reference: SWF File Format Specification v19, ActionDefineFunction (0x9B).
+
+## DefineFunction body-boundary warning (M1 follow-up)
+
+The current static-entry graph is a **provisional flat ActionRecord walk**.
+In SWF ActionDefineFunction (`0x9B`), `CodeSize` describes a separate
+function-body region following the ActionRecord header; those bytes are **not**
+enclosing top-level ActionRecords. Existing flat counts and branch-target
+classifications can therefore be inflated by treating function-body bytes
+as top-level instructions.
+
+This increment adds three **metadata-only** checks for visited, structurally
+bounded DefineFunction headers:
+
+- `visited_define_function_body_shadowed_record_count`: count of provisional
+  record-start offsets that fall inside a declared function-body region;
+- `visited_define_function_body_contains_first_end`: whether the old
+  first-ActionEnd boundary is inside a declared function body;
+- `top_level_partition_verified`: false whenever a visited nonempty
+  DefineFunction body has not yet been separated from the flat walk.
+
+Aggregate counts are checked in CI. These warnings do **not** fix the upstream
+`first_action_end_offset` / opcode/tail parsing, nor establish function
+invocation, runtime reachability, or game controls. The next change must
+implement a structure-aware parser across all dependent evidence stages and
+re-baseline affected counts against the original SWF, without publishing
+source code, original operands, art, or audio.
