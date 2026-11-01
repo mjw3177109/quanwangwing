@@ -9,6 +9,20 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# SWF BUTTONCONDACTION transition bits; key code occupies bits 9..15.
+# Bit positions are taken from the SWF DefineButton2 record layout.
+BUTTON_TRANSITIONS = {
+    "idle_to_over_up": 0x0001,
+    "over_up_to_idle": 0x0002,
+    "over_up_to_over_down": 0x0004,
+    "over_down_to_over_up": 0x0008,
+    "over_down_to_out_down": 0x0010,
+    "out_down_to_over_down": 0x0020,
+    "out_down_to_idle": 0x0040,
+    "idle_to_over_down": 0x0080,
+    "over_down_to_idle": 0x0100,
+}
+
 
 def _number(value, label):
     if type(value) is not int or value < 0:
@@ -36,6 +50,9 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
         raise ValueError("Button evidence coverage mismatch")
     button_by_id = {}
     condition_flags = Counter()
+    transition_counts = Counter()
+    key_codes = Counter()
+    trigger_classes = Counter({"transition_only": 0, "key_only": 0, "both": 0, "neither": 0})
     for row in rows:
         cid = _number(row.get("character_id"), "button ID")
         tag = definition_by_id.get(cid)
@@ -53,6 +70,15 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
             if type(flags) is not int or not 0 <= flags <= 65535:
                 raise ValueError("Invalid raw ButtonCondAction condition flags")
             condition_flags[f"0x{flags:04X}"] += 1
+            transitions = [name for name, mask in BUTTON_TRANSITIONS.items() if flags & mask]
+            key_code = (flags >> 9) & 0x7F
+            transition_counts.update(transitions)
+            if key_code:
+                key_codes[str(key_code)] += 1
+            trigger_class = ("both" if transitions and key_code else
+                             "transition_only" if transitions else
+                             "key_only" if key_code else "neither")
+            trigger_classes[trigger_class] += 1
         button_by_id[cid] = row
     if set(button_by_id) != set(definition_by_id):
         raise ValueError("Button definition IDs not fully covered")
@@ -121,6 +147,9 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
         "buttons_without_static_placement": sum(r["static_placement_count"] == 0 for r in result_rows),
         "static_placement_count": len(all_placements),
         "raw_button_condition_flags_histogram": dict(sorted(condition_flags.items())),
+        "decoded_button_transition_counts": {name: transition_counts[name] for name in BUTTON_TRANSITIONS},
+        "encoded_button_key_code_histogram": dict(sorted(key_codes.items(), key=lambda item: int(item[0]))),
+        "button_condition_trigger_class_counts": dict(trigger_classes),
         "placement_same_frame_context_counts": dict(same_frame_context),
         "action_bearing_static_placement_count": sum(r["static_placement_count"] for r in result_rows if r["embedded_action_record_count"] > 0),
         "main_timeline_placement_count": sum(p["timeline"] == "main" for p in all_placements),
@@ -130,7 +159,8 @@ def build_button_placement_crosswalk(manifest, buttons, timeline):
             "Static PlaceObject references do not establish a live MovieClip, button activation, or UI reachability.",
             "Dynamic ActionScript attachment and conditional execution are not resolved.",
             "Action containers are not equivalent to commands, playable moves, or verified input mappings.",
-            "Raw condition flags and same-frame FrameLabel/script co-location do not establish UI behavior, visibility, or execution.",
+            "Raw/decoded condition bits and same-frame FrameLabel/script co-location do not establish UI behavior, visibility, or execution.",
+            "Encoded key codes are SWF event fields, not verified browser key bindings or playable move inputs.",
             "Only character IDs, timeline IDs, frames, depths, offsets and counts are emitted; no original assets or scripts.",
         ],
     }
