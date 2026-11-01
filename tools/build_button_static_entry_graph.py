@@ -96,6 +96,12 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
     function_parameter_total = 0
     function_declared_body_byte_total = 0
     anonymous_function_count = 0
+    # Existing byte walk does not skip DefineFunction CodeSize bodies. Track
+    # their overlap with provisional record boundaries rather than silently
+    # claiming those boundaries belong to the enclosing top-level stream.
+    shadowed_record_starts = set()
+    first_end_inside_function_body = False
+    unpartitioned_function_body_count = 0
     while queue:
         start = queue.popleft()
         if start in visited:
@@ -113,6 +119,14 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
                 function_parameter_total += parameters
                 function_declared_body_byte_total += code_bytes
                 anonymous_function_count += int(anonymous)
+                if code_bytes:
+                    body_start = operand + length
+                    body_end = body_start + code_bytes
+                    shadowed_record_starts.update(
+                        p for p in nodes if body_start <= p < body_end
+                    )
+                    first_end_inside_function_body |= body_start <= first_end < body_end
+                    unpartitioned_function_body_count += 1
         if opcode == 0:
             continue
         successors = []
@@ -163,6 +177,9 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
         "visited_define_function_parameter_total": function_parameter_total,
         "visited_define_function_declared_body_byte_total": function_declared_body_byte_total,
         "visited_anonymous_define_function_count": anonymous_function_count,
+        "visited_define_function_body_shadowed_record_count": len(shadowed_record_starts),
+        "visited_define_function_body_contains_first_end": first_end_inside_function_body,
+        "top_level_partition_verified": unpartitioned_function_body_count == 0,
         "runtime_reachability_verified": False,
     }
 
@@ -225,10 +242,17 @@ def build_button_static_entry_graph(manifest: dict, buttons: dict, opcodes: dict
             r["visited_define_function_declared_body_byte_total"] for r in rows),
         "visited_anonymous_define_function_total": sum(
             r["visited_anonymous_define_function_count"] for r in rows),
+        "visited_define_function_body_shadowed_record_total": sum(
+            r["visited_define_function_body_shadowed_record_count"] for r in rows),
+        "graphs_with_first_end_inside_declared_function_body": sum(
+            r["visited_define_function_body_contains_first_end"] for r in rows),
+        "graphs_with_unverified_top_level_partition": sum(
+            not r["top_level_partition_verified"] for r in rows),
         "runtime_reachability_verified": False,
         "graphs": rows,
         "limitations": [
             "Syntactic top-level paths are NOT proof of Flash runtime execution.",
+            "Provisional ActionRecord boundaries may lie inside declared DefineFunction bodies; shadowed counts and first-End overlap flag this limitation, not a repaired parser.",
             "Conditional values, WaitForFrame, nested functions, With, Try and VM state are not modeled.",
             "Invalid branch target classes describe byte positions, not VM execution or safety.",
             "No original operand bytes, ActionScript, artwork, SWF or audio are emitted.",
