@@ -208,7 +208,7 @@ def build_evidence(scripts_root: Path, export: dict, crosswalk: dict,
                 "FrameLabel equality is lexical only; runtime receiver and target timeline are unverified.",
                 "String escapes and complex expressions are deliberately not resolved.",
                 "Static PlaceObject reachability is a union of possible placements; dynamic attachMovie, time, depth and runtime receiver bindings are not modeled.",
-                "A missing static path does NOT establish that a label or MovieClip is unreachable at runtime.",
+                "An absent static path does NOT establish that a label or MovieClip is unreachable at runtime.",
                 "No original label text, script source, media or inferred action frames are emitted.",
             ]}
 
