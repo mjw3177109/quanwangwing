@@ -18,9 +18,36 @@ from build_button_tail_evidence import build_button_tail_evidence, first_action_
 # These opcodes can change control flow in ways this bounded graph does not
 # interpret. Their presence is explicitly counted rather than silently ignored.
 UNMODELED_CONTROL_OPCODES = {0x8A, 0x8D, 0x8F, 0x94, 0x9B, 0x8E}
+DEFINE_FUNCTION_HEADER_STATUSES = ("complete", "code_size_mismatch", "malformed_header")
 INVALID_TARGET_CLASSES = (
     "invalid_operand_length", "before_stream", "after_stream", "record_interior",
 )
+
+
+
+def classify_define_function_header(payload: bytes, operand: int, length: int) -> tuple:
+    """Classify ActionDefineFunction (0x9B) framing without exporting names/body."""
+    limit = operand + length
+    name_end = payload.find(b"\x00", operand, limit)
+    if name_end < 0 or name_end + 3 > limit:
+        return "malformed_header", 0, 0, False
+    cursor = name_end + 1
+    param_count = struct.unpack_from("<H", payload, cursor)[0]
+    cursor += 2
+    if param_count > limit - cursor:
+        return "malformed_header", 0, 0, False
+    for _ in range(param_count):
+        end = payload.find(b"\x00", cursor, limit)
+        if end < 0:
+            return "malformed_header", 0, 0, False
+        cursor = end + 1
+    if cursor + 2 > limit:
+        return "malformed_header", 0, 0, False
+    code_size = struct.unpack_from("<H", payload, cursor)[0]
+    cursor += 2
+    if cursor + code_size != limit:
+        return "code_size_mismatch", 0, 0, False
+    return "complete", param_count, code_size, name_end == operand
 
 
 def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
@@ -61,6 +88,10 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
     reached_tail_end_branch_edges = 0
     unmodeled_reached = 0
     unmodeled_reached_counts = {f"0x{op:02x}": 0 for op in sorted(UNMODELED_CONTROL_OPCODES)}
+    function_status_counts = {key: 0 for key in DEFINE_FUNCTION_HEADER_STATUSES}
+    function_parameter_total = 0
+    function_declared_body_byte_total = 0
+    anonymous_function_count = 0
     while queue:
         start = queue.popleft()
         if start in visited:
@@ -70,6 +101,14 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
         if opcode in UNMODELED_CONTROL_OPCODES:
             unmodeled_reached += 1
             unmodeled_reached_counts[f"0x{opcode:02x}"] += 1
+        if opcode == 0x9B:
+            status, parameters, code_bytes, anonymous = classify_define_function_header(
+                payload, operand, length)
+            function_status_counts[status] += 1
+            if status == "complete":
+                function_parameter_total += parameters
+                function_declared_body_byte_total += code_bytes
+                anonymous_function_count += int(anonymous)
         if opcode == 0:
             continue
         successors = []
@@ -116,6 +155,10 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
         "invalid_visited_branch_target_class_counts": invalid_branch_target_classes,
         "unmodeled_visited_control_opcode_count": unmodeled_reached,
         "unmodeled_visited_control_opcode_counts": unmodeled_reached_counts,
+        "visited_define_function_header_status_counts": function_status_counts,
+        "visited_define_function_parameter_total": function_parameter_total,
+        "visited_define_function_declared_body_byte_total": function_declared_body_byte_total,
+        "visited_anonymous_define_function_count": anonymous_function_count,
         "runtime_reachability_verified": False,
     }
 
@@ -168,6 +211,16 @@ def build_button_static_entry_graph(manifest: dict, buttons: dict, opcodes: dict
                                  for r in rows)
             for op in sorted(UNMODELED_CONTROL_OPCODES)
         },
+        "visited_define_function_header_status_totals": {
+            key: sum(r["visited_define_function_header_status_counts"][key] for r in rows)
+            for key in DEFINE_FUNCTION_HEADER_STATUSES
+        },
+        "visited_define_function_parameter_total": sum(
+            r["visited_define_function_parameter_total"] for r in rows),
+        "visited_define_function_declared_body_byte_total": sum(
+            r["visited_define_function_declared_body_byte_total"] for r in rows),
+        "visited_anonymous_define_function_total": sum(
+            r["visited_anonymous_define_function_count"] for r in rows),
         "runtime_reachability_verified": False,
         "graphs": rows,
         "limitations": [
