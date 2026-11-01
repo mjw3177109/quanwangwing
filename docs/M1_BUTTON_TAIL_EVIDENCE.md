@@ -53,6 +53,20 @@ The report emits only counts per class and aggregate counts; it does not
 publish branch displacements, operands, byte sequences or decompiled source.
 CI verifies that per-record and aggregate counts close exactly.
 
+In addition to the target boundary categories, the report now separates
+ActionJump and ActionIf counts for branches targeting a post-End candidate
+record boundary and for branches targeting the post-End ActionEnd terminator.
+Both categories are emitted per original button action container and in
+aggregate. CI independently checks that each split matches its boundary
+category and the sum of the per-container values.
+
+This distinction can prioritize later control-flow investigation, but it
+does **not** establish a reachable Flash execution path: the analyzer
+does not evaluate ActionIf conditions, nested function bodies, WaitForFrame,
+or runtime instance state.
+
+
+
 **Evidence limit:** A matching byte boundary is not proof that Flash
 executes any post-End record. The audit does not model nested function
 bodies, conditional values, dynamic evaluation, WaitForFrame skip behavior

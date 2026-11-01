@@ -204,6 +204,26 @@ jobs:
               raise SystemExit("Button tail branch kind accounting mismatch")
           if tails["pre_end_branch_to_tail_record_boundary_count"] != classes["tail_record_boundary"]:
               raise SystemExit("Button tail branch boundary accounting mismatch")
+          for category, expected_class in (
+              ("tail_record_boundary_branch_kind_counts", "tail_record_boundary"),
+              ("tail_action_end_branch_kind_counts", "tail_action_end"),
+          ):
+              aggregate = tails[category]
+              if set(aggregate) != {"jump", "if"}:
+                  raise SystemExit(f"Unexpected button branch kind keys: {category}")
+              if sum(aggregate.values()) != classes[expected_class]:
+                  raise SystemExit(f"Button target-kind count mismatch: {category}")
+              for kind in ("jump", "if"):
+                  if sum(row[category][kind] for row in tails["tail_records"]) != aggregate[kind]:
+                      raise SystemExit(f"Button per-record target-kind mismatch: {category}/{kind}")
+          if any(
+              sum(row["tail_record_boundary_branch_kind_counts"].values()) !=
+              row["pre_end_branch_to_tail_record_boundary_count"] or
+              sum(row["tail_action_end_branch_kind_counts"].values()) !=
+              row["pre_end_branch_target_class_counts"]["tail_action_end"]
+              for row in tails["tail_records"]
+          ):
+              raise SystemExit("Button target-kind per-record accounting mismatch")
           if sum(x["pre_end_branch_count"] for x in tails["tail_records"]) != tails["pre_end_branch_count"]:
               raise SystemExit("Button tail per-record branch coverage mismatch")
           if any(x["pre_end_branch_to_tail_record_boundary_count"] >

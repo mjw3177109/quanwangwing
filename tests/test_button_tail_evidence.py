@@ -84,6 +84,29 @@ class ButtonTailEvidenceTests(unittest.TestCase):
         self.assertNotIn("original_operands", str(report))
         self.assertNotIn("script_source", str(report))
 
+    def test_tail_record_boundary_branch_kind_split(self):
+        for opcode, expected in ((0x99, "jump"), (0x9D, "if")):
+            with self.subTest(expected=expected):
+                report = audit(bytes((opcode, 2, 0, 1, 0, 0, 4, 0)))
+                row = report["tail_records"][0]
+                counts = row["tail_record_boundary_branch_kind_counts"]
+                self.assertEqual(counts[expected], 1)
+                self.assertEqual(counts["if" if expected == "jump" else "jump"], 0)
+                self.assertEqual(report["tail_record_boundary_branch_kind_counts"], counts)
+                self.assertEqual(sum(counts.values()),
+                                 report["pre_end_branch_to_tail_record_boundary_count"])
+                self.assertFalse(row["runtime_reachability_verified"])
+
+    def test_tail_action_end_kind_split_and_accounting(self):
+        report = audit(b"\x9d\x02\x00\x02\x00\x00\x04\x00")
+        row = report["tail_records"][0]
+        self.assertEqual(row["tail_action_end_branch_kind_counts"], {"jump": 0, "if": 1})
+        self.assertEqual(report["tail_action_end_branch_kind_counts"], {"jump": 0, "if": 1})
+        self.assertEqual(sum(report["tail_action_end_branch_kind_counts"].values()),
+                         report["pre_end_branch_target_class_counts"]["tail_action_end"])
+        self.assertEqual(report["tail_record_boundary_branch_kind_counts"],
+                         {"jump": 0, "if": 0})
+
     def test_tampered_opcode_report_is_rejected(self):
         manifest, buttons, data = fixture(b"\x04\x00\x77")
         report = build_button_opcode_evidence(manifest, buttons, data)
