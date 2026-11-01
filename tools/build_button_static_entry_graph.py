@@ -18,7 +18,7 @@ from build_button_tail_evidence import build_button_tail_evidence, first_action_
 # These opcodes can change control flow in ways this bounded graph does not
 # interpret. Their presence is explicitly counted rather than silently ignored.
 UNMODELED_CONTROL_OPCODES = {0x8A, 0x8D, 0x8F, 0x94, 0x9B, 0x8E}
-DEFINE_FUNCTION_HEADER_STATUSES = ("complete", "code_size_mismatch", "malformed_header")
+DEFINE_FUNCTION_HEADER_STATUSES = ("bounded_body", "body_out_of_bounds", "header_length_mismatch", "malformed_header")
 INVALID_TARGET_CLASSES = (
     "invalid_operand_length", "before_stream", "after_stream", "record_interior",
 )
@@ -45,9 +45,13 @@ def classify_define_function_header(payload: bytes, operand: int, length: int) -
         return "malformed_header", 0, 0, False
     code_size = struct.unpack_from("<H", payload, cursor)[0]
     cursor += 2
-    if cursor + code_size != limit:
-        return "code_size_mismatch", 0, 0, False
-    return "complete", param_count, code_size, name_end == operand
+    # Per SWF spec, CodeSize bytes follow the ActionRecord; they are NOT
+    # part of the ActionRecord Length field.
+    if cursor != limit:
+        return "header_length_mismatch", 0, 0, False
+    if limit + code_size > len(payload):
+        return "body_out_of_bounds", 0, 0, False
+    return "bounded_body", param_count, code_size, name_end == operand
 
 
 def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
@@ -105,7 +109,7 @@ def audit_top_level_entry_graph(payload: bytes, first_end: int) -> dict:
             status, parameters, code_bytes, anonymous = classify_define_function_header(
                 payload, operand, length)
             function_status_counts[status] += 1
-            if status == "complete":
+            if status == "bounded_body":
                 function_parameter_total += parameters
                 function_declared_body_byte_total += code_bytes
                 anonymous_function_count += int(anonymous)
