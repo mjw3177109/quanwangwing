@@ -46,3 +46,19 @@ strings or ActionScript bodies are included in the output.
 These are structural co-locations, not decoded mouse/keyboard conditions,
 reachable menu states, visible button instances, or evidence that a script
 actually executes. The original SWF and extracted media remain excluded.
+
+## SWF condition-bit decoding (metadata only)
+
+The crosswalk additionally decodes the nine transition bits of each verified
+16-bit ButtonCondAction condition field, and the seven-bit encoded key value
+(bits 9..15). It emits transition-bit counts, a numeric key-code histogram,
+and mutually exclusive transition-only/key-only/both/neither record counts.
+The raw histogram remains available so decoding can be independently checked.
+The bit layout follows the SWF DefineButton2 BUTTONCONDACTION specification;
+this is a **format-level decoding**, not an observed runtime key binding.
+
+In particular, a nonzero encoded key value does not establish an HTML5
+keyboard mapping, a menu selection, or a fighting move. Multiple transition
+bits can coexist in one action record; transition-bit totals therefore need
+not equal the number of records. No source text, label text, media or SWF bytes
+are emitted. The CI gate rejects missing or inconsistent aggregate counts.

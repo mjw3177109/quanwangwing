@@ -161,6 +161,19 @@ jobs:
               raise SystemExit("Button placement coverage mismatch")
           if sum(report["raw_button_condition_flags_histogram"].values()) != buttons["embedded_action_record_count"]:
               raise SystemExit("Button raw condition flag coverage mismatch")
+          classes = report["button_condition_trigger_class_counts"]
+          if set(classes) != {"transition_only", "key_only", "both", "neither"} or sum(classes.values()) != buttons["embedded_action_record_count"]:
+              raise SystemExit("Button condition trigger class accounting mismatch")
+          key_codes = report["encoded_button_key_code_histogram"]
+          if sum(key_codes.values()) != classes["key_only"] + classes["both"]:
+              raise SystemExit("Button encoded key-code accounting mismatch")
+          if any(not str(k).isdigit() or not 1 <= int(k) <= 127 for k in key_codes):
+              raise SystemExit("Invalid encoded button key code")
+          transitions = report["decoded_button_transition_counts"]
+          if len(transitions) != 9 or any(not 0 <= n <= buttons["embedded_action_record_count"] for n in transitions.values()):
+              raise SystemExit("Button transition bit accounting mismatch")
+          if sum(transitions.values()) < classes["transition_only"] + classes["both"]:
+              raise SystemExit("Button transition trigger coverage mismatch")
           contexts = report["placement_same_frame_context_counts"]
           if set(contexts) != {"neither", "label_only", "script_only", "both"} or sum(contexts.values()) != report["static_placement_count"]:
               raise SystemExit("Button UI frame context accounting mismatch")

@@ -105,5 +105,39 @@ class ButtonPlacementCrosswalkTests(unittest.TestCase):
             build_button_placement_crosswalk(manifest, buttons, timeline)
 
 
+    def test_decoded_release_transition_is_metadata_only(self):
+        manifest, buttons, timeline = fixtures()
+        report = build_button_placement_crosswalk(manifest, buttons, timeline)
+        self.assertEqual(report["decoded_button_transition_counts"]["over_down_to_over_up"], 1)
+        self.assertEqual(report["button_condition_trigger_class_counts"]["transition_only"], 1)
+        self.assertEqual(report["encoded_button_key_code_histogram"], {})
+
+    def test_encoded_key_code_is_not_a_verified_browser_binding(self):
+        manifest, buttons, timeline = fixtures()
+        buttons["buttons"][0]["embedded_action_records"][0]["condition_flags"] = 0x2400
+        report = build_button_placement_crosswalk(manifest, buttons, timeline)
+        self.assertEqual(report["encoded_button_key_code_histogram"], {"18": 1})
+        self.assertEqual(report["button_condition_trigger_class_counts"]["key_only"], 1)
+        self.assertEqual(sum(report["decoded_button_transition_counts"].values()), 0)
+
+    def test_combined_transition_and_encoded_key_code(self):
+        manifest, buttons, timeline = fixtures()
+        buttons["buttons"][0]["embedded_action_records"][0]["condition_flags"] = 0x2408
+        report = build_button_placement_crosswalk(manifest, buttons, timeline)
+        self.assertEqual(report["button_condition_trigger_class_counts"]["both"], 1)
+        self.assertEqual(report["decoded_button_transition_counts"]["over_down_to_over_up"], 1)
+        self.assertEqual(report["encoded_button_key_code_histogram"], {"18": 1})
+
+    def test_all_transition_bits_and_empty_trigger(self):
+        manifest, buttons, timeline = fixtures()
+        buttons["buttons"][0]["embedded_action_records"][0]["condition_flags"] = 0x01FF
+        report = build_button_placement_crosswalk(manifest, buttons, timeline)
+        self.assertEqual(set(report["decoded_button_transition_counts"].values()), {1})
+        self.assertEqual(report["button_condition_trigger_class_counts"]["transition_only"], 1)
+        buttons["buttons"][0]["embedded_action_records"][0]["condition_flags"] = 0
+        report = build_button_placement_crosswalk(manifest, buttons, timeline)
+        self.assertEqual(report["button_condition_trigger_class_counts"]["neither"], 1)
+        self.assertEqual(sum(report["decoded_button_transition_counts"].values()), 0)
+
 if __name__ == "__main__":
     unittest.main()
