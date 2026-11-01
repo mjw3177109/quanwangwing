@@ -106,6 +106,36 @@ class ButtonStaticEntryGraphTests(unittest.TestCase):
         self.assertEqual(r["unmodeled_visited_control_opcode_count"], 0)
         self.assertTrue(all(n == 0 for n in r["unmodeled_visited_control_opcode_counts"].values()))
 
+    def test_visited_define_function_header_complete(self):
+        r = graph(b"\x9b\x06\x00f\x00\x00\x00\x00\x00\x00")
+        self.assertEqual(r["visited_define_function_header_status_counts"]["complete"], 1)
+        self.assertEqual(r["visited_define_function_parameter_total"], 0)
+        self.assertEqual(r["visited_define_function_declared_body_byte_total"], 0)
+        self.assertFalse(r["runtime_reachability_verified"])
+
+    def test_visited_define_function_parameter_and_body_size(self):
+        r = graph(b"\x9b\x09\x00f\x00\x01\x00p\x00\x01\x00\x00\x00")
+        self.assertEqual(r["visited_define_function_header_status_counts"]["complete"], 1)
+        self.assertEqual(r["visited_define_function_parameter_total"], 1)
+        self.assertEqual(r["visited_define_function_declared_body_byte_total"], 1)
+
+    def test_define_function_code_size_mismatch_is_not_complete(self):
+        r = graph(b"\x9b\x07\x00f\x00\x00\x00\x02\x00\x04\x00")
+        self.assertEqual(r["visited_define_function_header_status_counts"]["code_size_mismatch"], 1)
+        self.assertEqual(r["visited_define_function_declared_body_byte_total"], 0)
+
+    def test_define_function_malformed_header_is_bounded(self):
+        r = graph(b"\x9b\x02\x00xy\x00")
+        self.assertEqual(r["visited_define_function_header_status_counts"]["malformed_header"], 1)
+        self.assertFalse(r["runtime_reachability_verified"])
+
+    def test_define_function_aggregate_and_no_names(self):
+        r = full_audit(b"\x9b\x06\x00f\x00\x00\x00\x00\x00\x00")
+        self.assertEqual(r["visited_define_function_header_status_totals"]["complete"], 1)
+        self.assertEqual(r["visited_define_function_parameter_total"], 0)
+        self.assertNotIn("function_name", str(r))
+        self.assertNotIn("function_body", str(r))
+
     def test_long_operand_zero_not_misread_as_end(self):
         r = graph(b"\x96\x02\x00\x00\x00\x00\x04\x00")
         self.assertEqual(r["top_level_record_count"], 4)
