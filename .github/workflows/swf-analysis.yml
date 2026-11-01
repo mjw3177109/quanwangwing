@@ -286,6 +286,24 @@ jobs:
           if any(opcode_totals[key] != sum(row["unmodeled_visited_control_opcode_counts"][key]
                                           for row in graph["graphs"]) for key in opcode_keys):
               raise SystemExit("Unmodeled control opcode histogram aggregation mismatch")
+          function_keys = {"complete", "code_size_mismatch", "malformed_header"}
+          function_totals = graph["visited_define_function_header_status_totals"]
+          if set(function_totals) != function_keys or sum(function_totals.values()) != opcode_totals["0x9b"]:
+              raise SystemExit("DefineFunction header classification coverage mismatch")
+          for row in graph["graphs"]:
+              counts = row["visited_define_function_header_status_counts"]
+              if set(counts) != function_keys or sum(counts.values()) != row["unmodeled_visited_control_opcode_counts"]["0x9b"]:
+                  raise SystemExit("DefineFunction header row coverage mismatch")
+          if any(function_totals[key] != sum(row["visited_define_function_header_status_counts"][key]
+                                              for row in graph["graphs"]) for key in function_keys):
+              raise SystemExit("DefineFunction header aggregate mismatch")
+          for total, field in (
+              ("visited_define_function_parameter_total", "visited_define_function_parameter_total"),
+              ("visited_define_function_declared_body_byte_total", "visited_define_function_declared_body_byte_total"),
+              ("visited_anonymous_define_function_total", "visited_anonymous_define_function_count"),
+          ):
+              if graph[total] != sum(row[field] for row in graph["graphs"]):
+                  raise SystemExit(f"DefineFunction metadata accounting mismatch: {total}")
           if graph["runtime_reachability_verified"] or any(
                   row["runtime_reachability_verified"] for row in graph["graphs"]):
               raise SystemExit("Unverified Flash runtime reachability claimed")
