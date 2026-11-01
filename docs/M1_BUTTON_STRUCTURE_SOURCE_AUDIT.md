@@ -41,3 +41,25 @@ The older flat opcode/tail/static-entry graph remains provisional and is
 investigate unsupported With/Try scopes, then migrate the downstream tail and
 entry-graph consumers to structure-aware boundaries with new regression tests.
 Do not infer original fighter actions, hitboxes or 1:1 completion from this audit.
+
+## Partition-aware pre-End branch target evidence
+
+The original SWF structure audit now classifies ActionJump (0x99) and
+ActionIf (0x9D) targets before the first **top-level** ActionEnd using only
+boundaries produced by `partition_top_level_actions`. Targets inside a
+declared DefineFunction/DefineFunction2 body are reported as `function_body`,
+not as enclosing top-level instructions. Other classes distinguish pre-End,
+first-End and post-End record boundaries, record interiors, out-of-range
+targets, and malformed branch operand lengths.
+
+The report includes per-record counts and a closed aggregate histogram;
+CI checks source provenance, row coverage, histogram totals and whether
+a missing top-level ActionEnd prevented a complete branch audit. No branch
+displacements, function names, original source bytes or artwork are emitted.
+
+This is **syntactic byte evidence only**. In particular, a branch target
+at a post-End record boundary is not proof of Flash VM execution. The older
+flat tail and static entry graph reports remain provisional and are not
+silently replaced by these counts. Follow-up work must compare the new
+histogram with FFDec's restricted decompilation and rebuild the graph on
+partitioned records before any runtime claim.
