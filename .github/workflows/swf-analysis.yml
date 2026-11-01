@@ -133,6 +133,34 @@ jobs:
               raise SystemExit("Button action byte accounting mismatch")
           PY
 
+      - name: Join verified button actions with static timeline placements (metadata only)
+        run: |
+          python3 tools/build_button_placement_crosswalk.py \
+            --manifest build/swf-analysis/swf-manifest.json \
+            --buttons build/swf-analysis/button-action-evidence.json \
+            --timeline build/swf-analysis/timeline-index.json \
+            --output build/swf-analysis/button-placement-crosswalk.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/swf-analysis")
+          manifest = json.loads((root / "swf-manifest.json").read_text(encoding="utf-8"))
+          buttons = json.loads((root / "button-action-evidence.json").read_text(encoding="utf-8"))
+          report = json.loads((root / "button-placement-crosswalk.json").read_text(encoding="utf-8"))
+          if report["source_sha256"] != manifest["source"]["sha256"] or report["source_sha256"] != buttons["source_sha256"]:
+              raise SystemExit("Button placement provenance mismatch")
+          if report["button_definition_count"] != buttons["define_button2_count"]:
+              raise SystemExit("Button definition count mismatch")
+          if report["buttons_with_actions"] != buttons["buttons_with_actions"]:
+              raise SystemExit("Action-bearing button count mismatch")
+          if sum(x["static_placement_count"] for x in report["buttons"]) != report["static_placement_count"]:
+              raise SystemExit("Button placement accounting mismatch")
+          if report["main_timeline_placement_count"] + report["nested_timeline_placement_count"] != report["static_placement_count"]:
+              raise SystemExit("Button placement timeline accounting mismatch")
+          if report["buttons_with_static_placement"] + report["buttons_without_static_placement"] != report["button_definition_count"]:
+              raise SystemExit("Button placement coverage mismatch")
+          PY
+
       - name: Build original legacy action opcode evidence (metadata only)
         run: |
           python3 tools/build_as2_action_opcode_evidence.py \
