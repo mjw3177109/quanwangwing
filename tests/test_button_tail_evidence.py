@@ -45,6 +45,45 @@ class ButtonTailEvidenceTests(unittest.TestCase):
         self.assertEqual(first_action_end_offset(b"\x96\x02\x00\x00\x01\x04\x00"), 6)
         self.assertIsNone(first_action_end_offset(b"\x96\x05\x00\x00"))
 
+    def test_pre_end_jump_targets_tail_candidate_boundary(self):
+        report = audit(b"\x99\x02\x00\x01\x00\x00\x04\x00")
+        row = report["tail_records"][0]
+        self.assertEqual(row["pre_end_branch_count"], 1)
+        self.assertEqual(row["pre_end_branch_to_tail_record_boundary_count"], 1)
+        self.assertEqual(report["pre_end_branch_target_class_counts"]["tail_record_boundary"], 1)
+        self.assertFalse(row["runtime_reachability_verified"])
+
+    def test_tail_terminator_and_first_end_are_distinct_targets(self):
+        for displacement, expected in ((2, "tail_action_end"), (0, "first_action_end")):
+            with self.subTest(expected=expected):
+                report = audit(b"\x99\x02\x00" + displacement.to_bytes(2, "little") +
+                               b"\x00\x04\x00")
+                self.assertEqual(report["pre_end_branch_target_class_counts"][expected], 1)
+                self.assertEqual(report["pre_end_branch_to_tail_record_boundary_count"], 0)
+
+    def test_pre_end_interior_and_invalid_branch_operand(self):
+        interior = audit(b"\x9d\x02\x00\xff\xff\x00\x04\x00")
+        self.assertEqual(interior["pre_end_branch_target_class_counts"]["pre_end_record_interior"], 1)
+        invalid = audit(b"\x99\x01\x00\x00\x00\x04\x00")
+        self.assertEqual(invalid["pre_end_branch_target_class_counts"]["invalid_branch_operand_length"], 1)
+
+    def test_outside_branch_targets_are_counted_without_following(self):
+        for displacement, expected in ((3, "outside_after"), (-7, "outside_before")):
+            with self.subTest(expected=expected):
+                report = audit(b"\x99\x02\x00" + displacement.to_bytes(2, "little", signed=True) +
+                               b"\x00\x04\x00")
+                self.assertEqual(report["pre_end_branch_target_class_counts"][expected], 1)
+
+    def test_branch_accounting_and_metadata_only(self):
+        report = audit(b"\x9d\x02\x00\x01\x00\x00\x04\x00")
+        self.assertEqual(sum(report["pre_end_branch_target_class_counts"].values()),
+                         report["pre_end_branch_count"])
+        self.assertEqual(sum(report["pre_end_branch_kind_counts"].values()),
+                         report["pre_end_branch_count"])
+        self.assertEqual(report["pre_end_branch_kind_counts"]["if"], 1)
+        self.assertNotIn("original_operands", str(report))
+        self.assertNotIn("script_source", str(report))
+
     def test_tampered_opcode_report_is_rejected(self):
         manifest, buttons, data = fixture(b"\x04\x00\x77")
         report = build_button_opcode_evidence(manifest, buttons, data)
