@@ -406,6 +406,48 @@ jobs:
               raise SystemExit("Unresolved ExportAssets match")
           PY
 
+      - name: Join original role FrameLabels with literal attachMovie Sprite symbols
+        run: |
+          python3 tools/build_role_label_attach_join.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --role-crosswalk build/as2-probe/role-crosswalk.json \
+            --call-evidence build/as2-probe/role-timeline-call-evidence.json \
+            --frame-label-evidence build/as2-probe/role-frame-label-evidence.json \
+            --timeline-index build/as2-probe/timeline-index.json \
+            --asset-index build/as2-probe/asset-index.json \
+            --attach-evidence build/as2-probe/runtime-attach-evidence.json \
+            --output build/as2-probe/role-label-attach-join.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "role-label-attach-join.json").read_text(encoding="utf-8"))
+          f = json.loads((root / "role-frame-label-evidence.json").read_text(encoding="utf-8"))
+          a = json.loads((root / "runtime-attach-evidence.json").read_text(encoding="utf-8"))
+          expected = {"no_sprite_label_candidate", "sprite_not_exported",
+                      "exported_no_literal_attach", "literal_attach_overlap"}
+          if (d["source_sha256"] != f["source_sha256"] or d["source_sha256"] != a["source_sha256"]
+                  or d["verified_script_count"] != a["verified_script_count"]
+                  or d["role_variant_count"] != f["role_variant_count"]
+                  or d["call_candidate_count"] != f["call_candidate_count"]
+                  or d["string_literal_call_count"] != f["string_literal_call_count"]):
+              raise SystemExit("Role FrameLabel attach provenance mismatch")
+          if set(d["classification_counts"]) != expected or sum(
+                  d["classification_counts"].values()) != d["string_literal_call_count"]:
+              raise SystemExit("Role FrameLabel attach classification mismatch")
+          if sum(len(r["calls"]) for r in d["roles"]) != d["string_literal_call_count"]:
+              raise SystemExit("Role FrameLabel attach per-role accounting mismatch")
+          for role in d["roles"]:
+              for call in role["calls"]:
+                  n = call["candidate_sprite_count"]
+                  exported = call["exported_candidate_sprite_count"]
+                  attached = call["literal_attach_candidate_sprite_count"]
+                  if (not (0 <= attached <= exported <= n)
+                          or call["runtime_binding_verified"] is not False):
+                      raise SystemExit("Unverified or invalid Sprite attach candidate")
+          PY
+
       - name: Trace dynamic attachMovie argument and lexical assignment candidates
         run: |
           python3 tools/build_attach_argument_provenance.py \
@@ -595,6 +637,7 @@ jobs:
             build/as2-probe/role-call-scope-join.json
             build/as2-probe/role-scope-target-evidence.json
             build/as2-probe/role-frame-label-evidence.json
+            build/as2-probe/role-label-attach-join.json
             build/as2-probe/role-reference-evidence.json
             build/as2-probe/runtime-attach-evidence.json
             build/as2-probe/attach-argument-provenance.json
