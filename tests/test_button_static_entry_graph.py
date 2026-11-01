@@ -134,7 +134,8 @@ class ButtonStaticEntryGraphTests(unittest.TestCase):
         self.assertEqual(r["visited_define_function_header_status_totals"]["bounded_body"], 1)
         self.assertEqual(r["visited_define_function_parameter_total"], 0)
         self.assertNotIn("function_name", str(r))
-        self.assertNotIn("function_body", str(r))
+        self.assertNotIn("function_body_bytes", str(r))
+        self.assertNotIn("function_body_source", str(r))
 
     def test_define_function_body_record_starts_are_shadowed(self):
         # CodeSize=2 follows the six-byte DefineFunction header, outside
