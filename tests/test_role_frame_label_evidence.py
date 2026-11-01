@@ -87,3 +87,54 @@ class RoleFrameLabelEvidenceTests(unittest.TestCase):
             result = build_evidence(root, *self.fixture(root, b'this.gotoAndPlay(frame);'))
             self.assertEqual(result["string_literal_call_count"], 0)
             self.assertEqual(sum(result["frame_label_match_categories"].values()), 0)
+
+    def test_static_placement_graph_direct_nested_and_unreachable(self):
+        source = (b'this.gotoAndPlay("idle"); this.gotoAndPlay("elsewhere"); '
+                  b'this.gotoAndPlay("deep"); this.gotoAndPlay("stray"); '
+                  b'this.gotoAndPlay("missing");')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = list(self.fixture(root, source))
+            timeline = args[3]
+            timeline["timelines"][0]["display_events"] = [
+                {"kind": "place", "character_id": 55},
+                {"kind": "place", "character_id": 999}]  # Non-Sprite reference
+            timeline["timelines"][1]["display_events"] = [
+                {"kind": "place", "character_id": 77},
+                {"kind": "place", "character_id": 42}]  # Cycle must terminate
+            timeline["timelines"].extend([
+                {"timeline": "sprite:77", "frame_labels": [{"label": "deep", "frame": 2}]},
+                {"timeline": "sprite:99", "frame_labels": [{"label": "stray", "frame": 1}]}])
+            timeline["timeline_count"] = 4
+            result = build_evidence(root, *args)
+            self.assertEqual(result["static_placement_relation_counts"], {
+                "own_timeline": 1, "direct_child_candidate": 1,
+                "nested_descendant_candidate": 1, "other_unreachable_static": 1,
+                "no_matching_label": 1, "escaped_or_unparsed": 0})
+            calls = result["roles"][0]["calls"]
+            self.assertEqual([c["minimum_static_placement_hops"] for c in calls],
+                             [0, 1, 2, None, None])
+            self.assertEqual(calls[2]["statically_reachable_timeline_count"], 1)
+            self.assertFalse(any(c["runtime_binding_verified"] for c in calls))
+            for label in ("idle", "elsewhere", "deep", "stray", "missing"):
+                self.assertNotIn(label, json.dumps(result))
+
+    def test_static_placement_rejects_invalid_character_id(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = list(self.fixture(root, b'this.gotoAndPlay("elsewhere");'))
+            args[3]["timelines"][0]["display_events"] = [
+                {"kind": "place", "character_id": -55}]
+            with self.assertRaisesRegex(ValueError, "PlaceObject character ID"):
+                build_evidence(root, *args)
+
+    def test_other_label_without_static_path_is_not_runtime_proof(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            result = build_evidence(root, *self.fixture(
+                root, b'this.gotoAndPlay("elsewhere");'))
+            self.assertEqual(result["frame_label_match_categories"]["other_only_candidate"], 1)
+            self.assertEqual(result["static_placement_relation_counts"]["other_unreachable_static"], 1)
+            self.assertIsNone(result["roles"][0]["calls"][0]["minimum_static_placement_hops"])
+            self.assertFalse(result["roles"][0]["calls"][0]["runtime_binding_verified"])
+
