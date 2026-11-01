@@ -4,13 +4,18 @@ import { CombatRuntime } from "./engine/CombatRuntime.js";
 import { ORIGINAL_SWF_STAGE } from "./engine/OriginalStage.js";
 
 const canvas = document.querySelector("#game");
+// Keep the intrinsic bitmap at the byte-verified SWF RECT; CSS scales it responsively.
+canvas.width = ORIGINAL_SWF_STAGE.width;
+canvas.height = ORIGINAL_SWF_STAGE.height;
+const STAGE_WIDTH = ORIGINAL_SWF_STAGE.width;
+const STAGE_HEIGHT = ORIGINAL_SWF_STAGE.height;
 const context = canvas.getContext("2d");
 const frameCounter = document.querySelector("#frame-counter");
 const input = new InputBuffer(window);
 const combat = new CombatRuntime();
 
-combat.addFighter("P1", { x: 345, facing: 1 });
-combat.addFighter("P2", { x: 615, facing: -1 });
+combat.addFighter("P1", { x: 220, facing: 1 });
+combat.addFighter("P2", { x: 440, facing: -1 });
 
 const moves = {
   light: { startup: 3, active: 2, recovery: 8, damage: 45, range: 112, hitstun: 12, pushback: 16 },
@@ -54,7 +59,7 @@ function drawHealth(x, y, width, fighter) {
 
 function drawFighter(fighter, color, label) {
   const x = fighter.x;
-  const y = 395;
+  const y = 370;
   context.save();
   context.translate(x, y);
   context.scale(fighter.facing, 1);
@@ -75,47 +80,47 @@ function drawFighter(fighter, color, label) {
   context.fillStyle = "#e9edf6";
   context.font = "bold 12px Segoe UI, sans-serif";
   context.textAlign = "center";
-  context.fillText(label + " / " + fighter.state.toUpperCase(), x, 420);
+  context.fillText(label + " / " + fighter.state.toUpperCase(), x, 404);
 }
 
 function render() {
-  const gradient = context.createLinearGradient(0, 0, 0, 540);
+  const gradient = context.createLinearGradient(0, 0, 0, STAGE_HEIGHT);
   gradient.addColorStop(0, "#171f36");
   gradient.addColorStop(0.58, "#29334a");
   gradient.addColorStop(1, "#0b101c");
   context.fillStyle = gradient;
-  context.fillRect(0, 0, 960, 540);
+  context.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
 
   context.fillStyle = "#ffffff08";
-  for (let x = 0; x < 960; x += 48) context.fillRect(x, 0, 1, 470);
-  for (let y = 0; y < 470; y += 48) context.fillRect(0, y, 960, 1);
+  for (let x = 0; x < STAGE_WIDTH; x += 33) context.fillRect(x, 0, 1, 420);
+  for (let y = 0; y < 420; y += 33) context.fillRect(0, y, STAGE_WIDTH, 1);
 
   context.fillStyle = "#d3a65b";
   context.font = "900 35px Segoe UI, sans-serif";
   context.textAlign = "center";
-  context.fillText("KOF WING 1.4", 480, 88);
+  context.fillText("KOF WING 1.4", STAGE_WIDTH / 2, 76);
   context.fillStyle = "#d6deed";
   context.font = "12px Segoe UI, sans-serif";
-  context.fillText("HTML5 COMBAT RUNTIME — FOUNDATION BUILD", 480, 113);
+  context.fillText("HTML5 COMBAT RUNTIME — DEBUG ONLY", STAGE_WIDTH / 2, 102);
 
   const p1 = combat.getFighter("P1");
   const p2 = combat.getFighter("P2");
-  drawHealth(80, 145, 340, p1);
-  drawHealth(540, 145, 340, p2);
+  drawHealth(25, 132, 245, p1);
+  drawHealth(390, 132, 245, p2);
   drawFighter(p1, "#5c91c7", "PLAYER 1");
   drawFighter(p2, "#bd6d64", "PLAYER 2");
 
   context.fillStyle = "#080b12";
-  context.fillRect(0, 465, 960, 75);
+  context.fillRect(0, 420, STAGE_WIDTH, STAGE_HEIGHT - 420);
   context.fillStyle = "#e7bd72";
   context.font = "bold 12px Segoe UI, sans-serif";
-  context.fillText("ORIGINAL SWF 660x485 @ 32FPS — ASSETS NOT IMPORTED", 480, 493);
+  context.fillText("ORIGINAL SWF 660x485 @ 32FPS — ASSETS NOT IMPORTED", STAGE_WIDTH / 2, 448);
   context.fillStyle = "#aeb9ce";
   context.font = "11px Segoe UI, sans-serif";
-  context.fillText("P1: A / D 移动 · J 轻击 · K 重击 · L 特殊技     P2: 方向键移动 · Num1 / Num2 / Num3 攻击", 480, 517);
+  context.fillText("P1: A/D · J/K/L   |   P2: 方向键 · Num1/2/3   |   DEBUG VALUES ONLY", STAGE_WIDTH / 2, 472);
 }
 
-// Match the source SWF simulation tick; the 960x540 canvas remains a debug-only viewport.
+// Match the source SWF tick and intrinsic RECT; visuals and combat values remain debug-only.
 const loop = new FixedStepLoop({ update, render, stepMs: 1000 / ORIGINAL_SWF_STAGE.frameRate });
 loop.start();
 
