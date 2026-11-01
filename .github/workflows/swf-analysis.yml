@@ -195,6 +195,20 @@ jobs:
               raise SystemExit("Button tail detail coverage mismatch")
           if any(x["runtime_reachability_verified"] for x in tails["tail_records"]):
               raise SystemExit("Unverified post-ActionEnd runtime reachability claimed")
+
+          classes = tails["pre_end_branch_target_class_counts"]
+          kinds = tails["pre_end_branch_kind_counts"]
+          if sum(classes.values()) != tails["pre_end_branch_count"]:
+              raise SystemExit("Button tail branch target accounting mismatch")
+          if sum(kinds.values()) != tails["pre_end_branch_count"]:
+              raise SystemExit("Button tail branch kind accounting mismatch")
+          if tails["pre_end_branch_to_tail_record_boundary_count"] != classes["tail_record_boundary"]:
+              raise SystemExit("Button tail branch boundary accounting mismatch")
+          if sum(x["pre_end_branch_count"] for x in tails["tail_records"]) != tails["pre_end_branch_count"]:
+              raise SystemExit("Button tail per-record branch coverage mismatch")
+          if any(x["pre_end_branch_to_tail_record_boundary_count"] >
+                 x["pre_end_branch_count"] for x in tails["tail_records"]):
+              raise SystemExit("Invalid button tail candidate branch count")
           PY
 
       - name: Join verified button actions with static timeline placements (metadata only)
