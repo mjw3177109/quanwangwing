@@ -129,6 +129,25 @@ class GraphComparisonTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "boolean"):
             compare_entry_graphs(old, new)
 
+    def test_unmatched_partitioned_row_cannot_claim_runtime_execution(self):
+        old, new = fixture()
+        new["records"][1]["runtime_reachability_verified"] = True
+        with self.assertRaisesRegex(ValueError, "runtime"):
+            compare_entry_graphs(old, new)
+
+    def test_unmatched_partitioned_row_cannot_claim_verified_status(self):
+        old, new = fixture()
+        new["records"][1]["graph_verified"] = False
+        new["graph_verified_count"] = 1
+        with self.assertRaisesRegex(ValueError, "inconsistent verified status"):
+            compare_entry_graphs(old, new)
+
+    def test_unmatched_partitioned_row_cannot_hide_verified_graph(self):
+        old, new = fixture()
+        new["records"][1]["status"] = "graph_rejected"
+        with self.assertRaisesRegex(ValueError, "inconsistent verified status"):
+            compare_entry_graphs(old, new)
+
     def test_no_original_bytes_or_source_in_report(self):
         old, new = fixture()
         report = compare_entry_graphs(copy.deepcopy(old), copy.deepcopy(new))
