@@ -57,3 +57,24 @@ this classification.
 The existing CLI invocation and metadata-only artifact remain unchanged;
 the output now also includes static_placement_relation_counts and
 per-call placement relationship metadata.
+
+## Candidate target timeline kinds
+
+A verified string-literal goto call can match FrameLabel tags on the **main**
+SWF timeline, on one or more **DefineSprite** timelines, on both, or on an
+unrecognized timeline namespace. The analyzer now counts **distinct candidate
+timelines**, separately from repeated label occurrences within one timeline,
+and reports only these metadata-only classes:
+
+- `main_only`, `sprite_only`, `main_and_sprite`, `other_or_mixed`
+- `no_match`, `escaped_or_unparsed`
+
+Each per-call row includes candidate timeline counts for main, Sprite and
+unrecognized namespaces. The six exclusive category counts must add up to
+the number of verified string-literal callsites. **No label text, Sprite ID
+of a matched target, target frame number, or source snippet is emitted.**
+
+These categories help prioritize inspection of actual timeline/instance
+creation paths. A main/Sprite label match is **not** a verified runtime
+receiver, action transition or playable character move; matching several
+timelines does not identify which one was called.
