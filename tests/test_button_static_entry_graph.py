@@ -134,7 +134,32 @@ class ButtonStaticEntryGraphTests(unittest.TestCase):
         self.assertEqual(r["visited_define_function_header_status_totals"]["bounded_body"], 1)
         self.assertEqual(r["visited_define_function_parameter_total"], 0)
         self.assertNotIn("function_name", str(r))
-        self.assertNotIn("function_body", str(r))
+        self.assertNotIn("function_body_bytes", str(r))
+        self.assertNotIn("function_body_source", str(r))
+
+    def test_define_function_body_record_starts_are_shadowed(self):
+        # CodeSize=2 follows the six-byte DefineFunction header, outside
+        # ActionRecord Length. The existing flat walk is only provisional.
+        r = graph(b"\x9b\x06\x00f\x00\x00\x00\x02\x00\x04\x04\x00")
+        self.assertEqual(r["visited_define_function_body_shadowed_record_count"], 2)
+        self.assertFalse(r["visited_define_function_body_contains_first_end"])
+        self.assertFalse(r["top_level_partition_verified"])
+        self.assertFalse(r["runtime_reachability_verified"])
+
+    def test_first_action_end_inside_declared_function_body_is_flagged(self):
+        # A zero byte inside a function body is not proof of a top-level End.
+        r = graph(b"\x9b\x06\x00f\x00\x00\x00\x03\x00\x04\x00\x04\x00")
+        self.assertTrue(r["visited_define_function_body_contains_first_end"])
+        self.assertEqual(r["visited_define_function_body_shadowed_record_count"], 3)
+        self.assertFalse(r["top_level_partition_verified"])
+
+    def test_function_body_overlap_aggregate_closes(self):
+        r = full_audit(b"\x9b\x06\x00f\x00\x00\x00\x02\x00\x04\x04\x00\x04\x00")
+        self.assertEqual(r["graph_record_count"], 1)
+        self.assertEqual(r["visited_define_function_body_shadowed_record_total"], 2)
+        self.assertEqual(r["graphs_with_unverified_top_level_partition"], 1)
+        self.assertEqual(r["graphs_with_first_end_inside_declared_function_body"], 0)
+        self.assertFalse(r["runtime_reachability_verified"])
 
     def test_long_operand_zero_not_misread_as_end(self):
         r = graph(b"\x96\x02\x00\x00\x00\x00\x04\x00")
