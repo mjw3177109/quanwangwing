@@ -37,3 +37,13 @@ The comparison **does not replace** the old graph, claim runtime reachability,
 interpret Flash conditions, execute function calls, or prove 1:1 behavior.
 It is a bounded diagnostic for prioritizing source-backed FFDec cross-checks.
 No original SWF, extracted scripts, operands, artwork or audio are included.
+
+## Partitioned-only row integrity gate
+
+The comparison also validates **every** partitioned source row, including rows
+outside the legacy tail subset. No row may claim Flash runtime execution, and
+`graph_verified` must agree with the `verified_graph` status. A malformed
+partitioned-only row now fails the comparison instead of escaping checks merely
+because it has no legacy counterpart. Three synthetic regression tests cover
+these cases; the hourly workflow already runs the complete Python test suite.
+This is metadata validation, not new evidence of game behavior.
