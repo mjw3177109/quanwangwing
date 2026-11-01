@@ -11,6 +11,7 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
+import struct
 
 from build_button_opcode_evidence import build_button_opcode_evidence
 from build_button_tail_evidence import first_action_end_offset
@@ -18,6 +19,63 @@ from button_action_structure import ActionStructureError, partition_top_level_ac
 
 
 STATUSES = ("partitioned", "unsupported_nested_scope", "malformed_or_unsupported")
+PARTITIONED_BRANCH_CLASSES = (
+    "pre_end_record", "first_end", "post_end_record", "function_body",
+    "record_interior", "before_stream", "after_stream", "invalid_operand_length",
+)
+
+
+def audit_partitioned_pre_end_branches(payload: bytes, parsed: dict) -> dict:
+    """Classify syntactic Jump/If targets on verified TOP-LEVEL boundaries.
+
+    Function bodies are excluded from the top-level record map. A target in a
+    declared function body is reported separately, never treated as a valid
+    top-level instruction. This does not evaluate Flash conditions or VM state.
+    """
+    first_end = parsed["first_top_level_action_end_offset"]
+    classes = Counter({name: 0 for name in PARTITIONED_BRANCH_CLASSES})
+    kinds = Counter({"jump": 0, "if": 0})
+    records = parsed["records"]
+    starts = {rec.start for rec in records}
+    bodies = [(rec.body_start, rec.body_end) for rec in records
+              if rec.body_start is not None]
+    if first_end is None:
+        return {
+            "partitioned_pre_end_branch_audit_complete": False,
+            "partitioned_pre_end_branch_count": 0,
+            "partitioned_pre_end_branch_kind_counts": dict(kinds),
+            "partitioned_pre_end_branch_target_class_counts": dict(classes),
+            "runtime_reachability_verified": False,
+        }
+    for rec in records:
+        if rec.start >= first_end:
+            break
+        if rec.opcode not in (0x99, 0x9D):
+            continue
+        kinds["jump" if rec.opcode == 0x99 else "if"] += 1
+        if rec.header_end - rec.start != 5:
+            cls = "invalid_operand_length"
+        else:
+            target = rec.header_end + struct.unpack_from("<h", payload, rec.start + 3)[0]
+            if target in starts:
+                cls = ("pre_end_record" if target < first_end else
+                       "first_end" if target == first_end else "post_end_record")
+            elif any(start <= target < end for start, end in bodies):
+                cls = "function_body"
+            elif target < 0:
+                cls = "before_stream"
+            elif target >= len(payload):
+                cls = "after_stream"
+            else:
+                cls = "record_interior"
+        classes[cls] += 1
+    return {
+        "partitioned_pre_end_branch_audit_complete": True,
+        "partitioned_pre_end_branch_count": sum(kinds.values()),
+        "partitioned_pre_end_branch_kind_counts": dict(kinds),
+        "partitioned_pre_end_branch_target_class_counts": dict(classes),
+        "runtime_reachability_verified": False,
+    }
 
 
 def summarize_partitions(buttons: dict, verified_opcodes: dict, data: bytes) -> dict:
@@ -43,6 +101,9 @@ def summarize_partitions(buttons: dict, verified_opcodes: dict, data: bytes) -> 
     declared_body_bytes = 0
     post_end_records = 0
     missing_top_level_end = 0
+    branch_totals = Counter({name: 0 for name in PARTITIONED_BRANCH_CLASSES})
+    branch_count = 0
+    branch_audits_complete = 0
     for event in entries:
         cid = event["button_character_id"]
         offset = event["action_offset_uncompressed"]
@@ -84,6 +145,11 @@ def summarize_partitions(buttons: dict, verified_opcodes: dict, data: bytes) -> 
             declared_functions += parsed["declared_function_count"]
             declared_body_bytes += parsed["declared_function_body_byte_total"]
             post_end_records += parsed["top_level_post_end_record_count"]
+            branch_audit = audit_partitioned_pre_end_branches(payload, parsed)
+            branch_count += branch_audit["partitioned_pre_end_branch_count"]
+            branch_totals.update(branch_audit["partitioned_pre_end_branch_target_class_counts"])
+            branch_audits_complete += int(
+                branch_audit["partitioned_pre_end_branch_audit_complete"])
             row.update({
                 "status": status,
                 "top_level_partition_verified": True,
@@ -93,6 +159,7 @@ def summarize_partitions(buttons: dict, verified_opcodes: dict, data: bytes) -> 
                 "top_level_post_end_record_count": parsed["top_level_post_end_record_count"],
                 "declared_function_count": parsed["declared_function_count"],
                 "declared_function_body_byte_total": parsed["declared_function_body_byte_total"],
+                **branch_audit,
             })
         status_counts[status] += 1
         rows.append(row)
@@ -107,10 +174,14 @@ def summarize_partitions(buttons: dict, verified_opcodes: dict, data: bytes) -> 
         "declared_function_count_in_partitioned_records": declared_functions,
         "declared_function_body_bytes_in_partitioned_records": declared_body_bytes,
         "top_level_post_end_record_count_in_partitioned_records": post_end_records,
+        "partitioned_pre_end_branch_count": branch_count,
+        "partitioned_pre_end_branch_target_class_totals": dict(branch_totals),
+        "partitioned_pre_end_branch_audits_complete": branch_audits_complete,
         "runtime_reachability_verified": False,
         "records": rows,
         "limitations": [
             "The existing flat opcode, tail and entry graph reports remain provisional.",
+            "Partitioned branch targets are syntactic only; function bodies are not top-level records.",
             "Unsupported With/Try and malformed scopes are reported as unverified, not silently accepted.",
             "Syntactic post-End records are not proven reachable or executable.",
             "No original SWF, script, function names, operands, artwork or audio bytes are emitted.",
