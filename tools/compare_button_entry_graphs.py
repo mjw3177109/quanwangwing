@@ -55,6 +55,9 @@ def compare_entry_graphs(legacy: dict, partitioned: dict) -> dict:
     new_index = _index(new_rows, "partitioned")
     if not old_index.keys() <= new_index.keys():
         raise ValueError("Legacy graph missing from partitioned source coverage")
+    for row in new_rows:
+        _flag(row["graph_verified"], "partitioned verified")
+        _flag(row["runtime_reachability_verified"], "partitioned row runtime")
     if (_count(partitioned["graph_verified_count"], "verified graph count") !=
             sum(row["graph_verified"] is True for row in new_rows)):
         raise ValueError("Partitioned graph verified-count mismatch")
