@@ -260,6 +260,35 @@ jobs:
               raise SystemExit("Original function branch target audit regression")
           PY
 
+      - name: Test conservative button function CFG parser
+        run: python3 -m unittest discover -s tests -p 'test_button_function_cfg_audit.py' -v
+
+      - name: Audit source-backed function syntactic CFG (metadata only)
+        run: |
+          python3 tools/build_button_function_cfg_audit.py \
+            --swf 拳皇wing1.4.swf \
+            --join build/as2-probe/button-bytecode-lexical-join.json \
+            --output build/as2-probe/button-function-cfg-audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          join = json.loads((root / "button-bytecode-lexical-join.json").read_text(encoding="utf-8"))
+          cfg = json.loads((root / "button-function-cfg-audit.json").read_text(encoding="utf-8"))
+          statuses = cfg["graph_status_counts"]
+          if (cfg["source_sha256"] != join["source_sha256"]
+                  or cfg["function_body_count"] != join["bytecode_declared_function_total_on_partitioned_records"]
+                  or set(statuses) != {"complete_syntactic_graph", "unresolved_opcode_or_target", "source_partition_rejected"}
+                  or sum(statuses.values()) != cfg["function_body_count"]
+                  or cfg["partitioned_record_total"] != join["bytecode_function_body_record_total"]
+                  or cfg["complete_graph_record_total"] != cfg["static_entry_reachable_candidate_total"] + cfg["static_entry_unreachable_candidate_total"]
+                  or len(cfg["records"]) != cfg["function_body_count"]
+                  or cfg["runtime_reachability_verified"] is not False
+                  or cfg["decompiled_semantics_verified"] is not False
+                  or any(row["runtime_reachability_verified"] is not False for row in cfg["records"])):
+              raise SystemExit("Function CFG evidence accounting regression")
+          PY
+
       - name: Build SWF ExportAssets candidate index
         run: python3 tools/build_asset_index.py --manifest build/as2-probe/swf-manifest.json --output build/as2-probe/asset-index.json
 
@@ -765,6 +794,7 @@ jobs:
             build/as2-probe/button-ffdec-lexical-audit.json
             build/as2-probe/button-bytecode-lexical-join.json
             build/as2-probe/button-function-branch-audit.json
+            build/as2-probe/button-function-cfg-audit.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-zero-frame-init-join.json
