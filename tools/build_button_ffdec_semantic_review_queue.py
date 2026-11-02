@@ -22,6 +22,31 @@ def _index(records, name):
     return result
 
 
+
+def _source_scope(body: dict, origin: dict, event_offset: int) -> dict:
+    """Validate and expose half-open source coordinates, never source bytes."""
+    keys = ("declaration_offset_uncompressed", "body_start_uncompressed",
+            "body_end_uncompressed", "body_byte_length")
+    values = [body.get(k) for k in keys]
+    if any(type(v) is not int for v in values):
+        raise ValueError("Invalid source function scope coordinates")
+    declaration, start, end, size = values
+    if not (event_offset <= declaration < start <= end and size == end - start):
+        raise ValueError("Invalid source function scope boundaries")
+    status = body.get("body_partition_status")
+    if status not in ("partitioned", "rejected"):
+        raise ValueError("Invalid source function scope partition status")
+    return {
+        "declaration_offset_uncompressed": declaration,
+        "body_start_uncompressed": start,
+        "body_end_uncompressed_exclusive": end,
+        "body_byte_length": size,
+        "body_partition_status": status,
+        "operand_origin_status": origin["origin_status"],
+        "source_action_if_opcode_count": origin["source_if_opcode_count"],
+    }
+
+
 def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict) -> dict:
     sha = join["source_sha256"]
     if any(d["source_sha256"] != sha for d in (lexical, crosswalk, origins)):
@@ -60,17 +85,24 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
         if classification != "source_partition_rejected" and len(bodies) != src["bytecode_declared_function_count"]:
             raise ValueError("Source function range count mismatch")
         body_rows = []
+        scope_rows = []
+        seen_starts = set()
         for body in bodies:
             origin_key = (key[0], body["body_start_uncompressed"])
             origin = origin_index.get(origin_key)
             if origin is None:
                 raise ValueError("Missing source-backed operand provenance")
+            if origin_key in seen_starts:
+                raise ValueError("Duplicate source function scope")
+            seen_starts.add(origin_key)
+            scope_rows.append(_source_scope(body, origin, key[1]))
             used_origins.add(origin_key)
             body_rows.append(origin)
         if classification == "neither_detected":
             continue
         complete = bool(body_rows) and all(
-            x["origin_status"] == "bounded_origin_candidates" for x in body_rows)
+            x["origin_status"] == "bounded_origin_candidates" for x in body_rows) and all(
+            x["body_partition_status"] == "partitioned" for x in scope_rows)
         queue.append({
             "button_character_id": key[0],
             "action_offset_uncompressed": key[1],
@@ -79,6 +111,7 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
             "ffdec_export_sha256": hashes[0],
             "source_function_declaration_count": src["bytecode_declared_function_count"],
             "source_function_body_count": len(body_rows),
+            "source_function_scopes": scope_rows,
             "source_action_if_opcode_count": sum(x["source_if_opcode_count"] or 0 for x in body_rows),
             "ffdec_event_lexical_function_candidate_count": lex["lexical_function_candidate_count"],
             "ffdec_event_lexical_if_keyword_count": lex["lexical_branch_keyword_counts"].get("if", 0),
