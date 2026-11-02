@@ -263,6 +263,9 @@ jobs:
       - name: Test conservative button function CFG parser
         run: python3 -m unittest discover -s tests -p 'test_button_function_cfg_audit.py' -v
 
+      - name: Test bounded button function stack candidate parser
+        run: python3 -m unittest discover -s tests -p 'test_button_function_stack_audit.py' -v
+
       - name: Audit source-backed function syntactic CFG (metadata only)
         run: |
           python3 tools/build_button_function_cfg_audit.py \
@@ -290,6 +293,33 @@ jobs:
                   or cfg["decompiled_semantics_verified"] is not False
                   or any(row["runtime_reachability_verified"] is not False for row in cfg["records"])):
               raise SystemExit("Function CFG evidence accounting regression")
+          PY
+
+      - name: Audit bounded source-backed button stack depth candidates (metadata only)
+        run: |
+          python3 tools/build_button_function_stack_audit.py \
+            --swf 拳皇wing1.4.swf \
+            --join build/as2-probe/button-bytecode-lexical-join.json \
+            --output build/as2-probe/button-function-stack-audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          join = json.loads((root / "button-bytecode-lexical-join.json").read_text(encoding="utf-8"))
+          d = json.loads((root / "button-function-stack-audit.json").read_text(encoding="utf-8"))
+          statuses = d["stack_status_counts"]
+          rows = d["records"]
+          if (d["source_sha256"] != join["source_sha256"]
+                  or d["function_body_count"] != join["bytecode_declared_function_total_on_partitioned_records"]
+                  or set(statuses) != {"bounded_candidate_paths", "analysis_limit_reached", "source_cfg_unresolved"}
+                  or sum(statuses.values()) != len(rows) or len(rows) != d["function_body_count"]
+                  or sum(r["explored_candidate_state_count"] or 0 for r in rows) != d["explored_candidate_state_total"]
+                  or sum(r["potential_underflow_record_count"] or 0 for r in rows) != d["potential_underflow_record_total"]
+                  or sum(r["divergent_entry_depth_record_count"] or 0 for r in rows) != d["divergent_entry_depth_record_total"]
+                  or any(r["entry_stack_depth_assumption"] != 0 or r["runtime_stack_verified"] is not False for r in rows)
+                  or d["runtime_stack_verified"] is not False
+                  or d["decompiled_semantics_verified"] is not False):
+              raise SystemExit("Bounded button stack candidate evidence accounting regression")
           PY
 
       - name: Build SWF ExportAssets candidate index
@@ -798,6 +828,7 @@ jobs:
             build/as2-probe/button-bytecode-lexical-join.json
             build/as2-probe/button-function-branch-audit.json
             build/as2-probe/button-function-cfg-audit.json
+            build/as2-probe/button-function-stack-audit.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-zero-frame-init-join.json
