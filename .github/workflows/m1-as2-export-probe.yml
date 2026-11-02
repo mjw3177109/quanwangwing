@@ -369,6 +369,17 @@ jobs:
                          for r in rows)
                   or any(r["literal_string_count"] != len(r["literal_string_equivalence_classes_in_push_order"])
                          for r in rows if r["literal_string_count"] is not None)
+                  or any((r["literal_string_locations"] is not None) !=
+                         (r["origin_status"] == "bounded_origin_candidates") for r in rows)
+                  or any(r["literal_string_count"] != len(r["literal_string_locations"]) or
+                         [loc["class_label"] for loc in r["literal_string_locations"]] !=
+                         r["literal_string_equivalence_classes_in_push_order"]
+                         for r in rows if r["literal_string_locations"] is not None)
+                  or any(type(loc["push_record_offset_uncompressed"]) is not int or
+                         loc["push_record_offset_uncompressed"] < r["function_body_start_uncompressed"] or
+                         type(loc["push_element_index"]) is not int or loc["push_element_index"] < 0
+                         for r in rows if r["literal_string_locations"] is not None
+                         for loc in r["literal_string_locations"])
                   or any(r["runtime_behavior_verified"] is not False for r in rows)
                   or d["runtime_behavior_verified"] is not False
                   or d["decompiled_semantics_verified"] is not False):
