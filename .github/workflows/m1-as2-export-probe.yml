@@ -322,6 +322,36 @@ jobs:
               raise SystemExit("Bounded button stack candidate evidence accounting regression")
           PY
 
+      - name: Test source-backed button operand origin candidates
+        run: python3 -m unittest discover -s tests -p 'test_button_operand_origin_audit.py' -v
+
+      - name: Audit source-backed button operand origin candidates (metadata only)
+        run: |
+          python3 tools/build_button_operand_origin_audit.py \
+            --swf 拳皇wing1.4.swf \
+            --join build/as2-probe/button-bytecode-lexical-join.json \
+            --output build/as2-probe/button-operand-origin-audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          join = json.loads((root / "button-bytecode-lexical-join.json").read_text(encoding="utf-8"))
+          d = json.loads((root / "button-operand-origin-audit.json").read_text(encoding="utf-8"))
+          rows = d["records"]
+          if (d["source_sha256"] != join["source_sha256"]
+                  or d["function_body_count"] != join["bytecode_declared_function_total_on_partitioned_records"]
+                  or set(d["origin_status_counts"]) != {"bounded_origin_candidates", "analysis_limit_reached", "source_stack_unresolved"}
+                  or sum(d["origin_status_counts"].values()) != len(rows)
+                  or len(rows) != d["function_body_count"]
+                  or d["source_get_variable_opcode_total"] != sum(r["source_get_variable_opcode_count"] or 0 for r in rows)
+                  or d["source_set_variable_opcode_total"] != sum(r["source_set_variable_opcode_count"] or 0 for r in rows)
+                  or d["source_if_opcode_total"] != sum(r["source_if_opcode_count"] or 0 for r in rows)
+                  or any(r["runtime_behavior_verified"] is not False for r in rows)
+                  or d["runtime_behavior_verified"] is not False
+                  or d["decompiled_semantics_verified"] is not False):
+              raise SystemExit("Button operand origin provenance accounting regression")
+          PY
+
       - name: Build SWF ExportAssets candidate index
         run: python3 tools/build_asset_index.py --manifest build/as2-probe/swf-manifest.json --output build/as2-probe/asset-index.json
 
@@ -829,6 +859,7 @@ jobs:
             build/as2-probe/button-function-branch-audit.json
             build/as2-probe/button-function-cfg-audit.json
             build/as2-probe/button-function-stack-audit.json
+            build/as2-probe/button-operand-origin-audit.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-zero-frame-init-join.json
