@@ -94,6 +94,10 @@ def trace_body(body, start, locations, branches, max_states=4096, max_depth=128)
             body[offset + 3:record_end], 'little', signed=True)
         if target != encoded_target:
             raise ValueError('Branch target does not match source ActionRecord displacement')
+        # Verify the report's boundary class against the original function bytes.
+        expected_class = 'body_end' if target == len(body) else 'record_start'
+        if row['target_classification'] != expected_class:
+            raise ValueError('Branch target classification does not match source boundary')
         branch_targets[offset] = target
     if set(branch_targets) != {pos for pos, _, op in records if op in (0x99, 0x9D)}:
         raise ValueError('Missing or extra verified branch')
