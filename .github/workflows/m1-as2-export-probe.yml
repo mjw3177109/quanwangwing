@@ -386,6 +386,37 @@ jobs:
               raise SystemExit("Button operand origin provenance accounting regression")
           PY
 
+      - name: Test source-backed operand consumer edge candidates
+        run: python3 -m unittest discover -s tests -p 'test_button_operand_consumer_edges.py' -v
+
+      - name: Trace source-backed operand consumer edges (metadata only)
+        run: |
+          python3 tools/build_button_operand_consumer_edges.py \
+            --swf 拳皇wing1.4.swf \
+            --join build/as2-probe/button-bytecode-lexical-join.json \
+            --origins build/as2-probe/button-operand-origin-audit.json \
+            --branches build/as2-probe/button-function-branch-audit.json \
+            --output build/as2-probe/button-operand-consumer-edges.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "button-operand-consumer-edges.json").read_text(encoding="utf-8"))
+          o = json.loads((root / "button-operand-origin-audit.json").read_text(encoding="utf-8"))
+          if (d["source_sha256"] != o["source_sha256"]
+                  or d["function_body_count"] != o["function_body_count"]
+                  or d["complete_function_count"] != o["origin_status_counts"]["bounded_origin_candidates"]
+                  or d["candidate_consumer_edge_count"] != sum(len(r["candidate_consumer_edges"] or []) for r in d["records"])
+                  or any((r["origin_status"] == "bounded_origin_candidates") !=
+                         (r["candidate_consumer_edges"] is not None) for r in d["records"])
+                  or any(e["consumer_opcode"] not in ("GetVariable", "SetVariable", "ActionIf")
+                         or e["operand_role"] not in ("variable_name", "variable_value", "condition")
+                         for r in d["records"] for e in (r["candidate_consumer_edges"] or []))
+                  or d["runtime_behavior_verified"] is not False
+                  or d["decompiled_semantics_verified"] is not False):
+              raise SystemExit("Source operand consumer edge provenance regression")
+          PY
+
       - name: Test hash-verified FFDec semantic review queue
         run: python3 -m unittest discover -s tests -p 'test_button_ffdec_semantic_review_queue.py' -v
 
@@ -927,6 +958,7 @@ jobs:
             build/as2-probe/button-function-cfg-audit.json
             build/as2-probe/button-function-stack-audit.json
             build/as2-probe/button-operand-origin-audit.json
+            build/as2-probe/button-operand-consumer-edges.json
             build/as2-probe/button-ffdec-semantic-review-queue.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
