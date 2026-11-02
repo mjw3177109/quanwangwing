@@ -16,7 +16,12 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
                                   "ffdec_export_sha256": self.export_sha,
                                   "comparison_class": "bytecode_only_candidate",
                                   "bytecode_declared_function_count": 1,
-                                  "bytecode_function_body_ranges": [{"body_start_uncompressed": 110}],
+                                  "bytecode_function_body_ranges": [{
+                                      "declaration_offset_uncompressed": 104,
+                                      "body_start_uncompressed": 110,
+                                      "body_end_uncompressed": 164,
+                                      "body_byte_length": 54,
+                                      "body_partition_status": "partitioned"}],
                                   "lexical_function_candidate_count": 0}]}
         self.lexical = {"source_sha256": self.sha, "audited_button_action_count": 1,
                         "records": [{"button_character_id": 693, "action_offset_uncompressed": 100,
@@ -42,6 +47,8 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
         self.assertEqual(d["manual_review_queue_count"], 1)
         row = d["records"][0]
         self.assertEqual(row["source_action_if_opcode_count"], 1)
+        self.assertEqual(row["source_function_scopes"][0]["body_start_uncompressed"], 110)
+        self.assertEqual(row["source_function_scopes"][0]["body_end_uncompressed_exclusive"], 164)
         self.assertEqual(row["ffdec_event_lexical_if_keyword_count"], 30)
         self.assertEqual(row["source_if_operand_origin_types"], ["literal_string"])
         self.assertFalse(row["decompiled_semantics_verified"])
@@ -74,6 +81,23 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
         self.lexical["records"].append(deepcopy(self.lexical["records"][0]))
         with self.assertRaisesRegex(ValueError, "Duplicate lexical"):
             self.build()
+
+
+    def test_source_scope_rejects_length_mismatch(self):
+        self.join["records"][0]["bytecode_function_body_ranges"][0]["body_byte_length"] = 53
+        with self.assertRaisesRegex(ValueError, "scope boundaries"):
+            self.build()
+
+    def test_source_scope_rejects_invalid_declaration(self):
+        self.join["records"][0]["bytecode_function_body_ranges"][0]["declaration_offset_uncompressed"] = 110
+        with self.assertRaisesRegex(ValueError, "scope boundaries"):
+            self.build()
+
+    def test_rejected_body_cannot_claim_complete_operand_evidence(self):
+        self.join["records"][0]["bytecode_function_body_ranges"][0]["body_partition_status"] = "rejected"
+        row = self.build()["records"][0]
+        self.assertFalse(row["operand_origins_complete"])
+        self.assertIsNone(row["source_if_operand_origin_types"])
 
 
 if __name__ == "__main__":
