@@ -22,3 +22,9 @@ python3 tools/build_button_ffdec_semantic_review_queue.py \
 复核队列中的每条候选事件现包含 `source_function_scopes`：原始 SWF 解压后字节流中的 DefineFunction 声明偏移、函数体半开区间 `[start, end)`、长度、结构解析状态、操作数来源状态和原始 ActionIf 指令数。生成时校验声明位置、范围顺序和长度闭合；异常来源直接失败，不会生成看似完整的复核坐标。
 
 审核人员可使用这些坐标在受限环境定位原始函数体，再对照同一条队列中的 FFDec 导出路径与 SHA-256，避免将整个按钮事件的 `if` 关键词数误当成嵌套函数的分支数。结构解析被拒绝时，`operand_origins_complete` 必须为 false。坐标是**静态定位证据**，不是脚本语义、角色动作或 Flash VM 执行结果。不得公开对应原始字节或脚本正文。
+
+## M1 增量：事件边界与操作码来源闭合
+
+复核坐标还必须位于对应的原版 `ButtonCondAction` 有效负载范围内。范围上界使用已经与原始 SWF 字节核对的 FFDec crosswalk `source_action_byte_length`，负载起点为 `action_offset_uncompressed + 4`（两个 16 位头字段）。函数声明不能落在头字段中，函数体不能跨越事件末尾；同一事件中顶层函数范围不得重叠。
+
+对结构已成功分区、操作数来源状态为 `bounded_origin_candidates` 的函数，额外核对原始 ActionRecord opcode 直方图的总数，以及 `GetVariable (0x1c)`、`SetVariable (0x1d)`、`ActionIf (0x9d)` 与来源分析的指令数。缺失或不一致时拒绝生成复核队列。该约束仅防止不同来源的静态证据被错误拼接，**不代表变量、条件或 FFDec 反编译语义已被证明**；仍不输出脚本正文、操作数或媒体。
