@@ -17,3 +17,9 @@ python3 tools/build_button_operand_origin_audit.py --swf 拳皇wing1.4.swf --joi
 `build_button_operand_origin_audit.py` 在原有来源、分支与有界栈验证全部通过的函数体中，额外读取原版 ActionPush 的字符串**原始字节等同性**。相同字节分配同一个报告内临时编号（如 `S1`），记录每个函数体中按压栈顺序出现的编号，以及各编号出现次数。只在内存中比较原始字节；输出 JSON **不包含字符串内容、原始字节、字符串哈希或 AS2 源码**。
 
 该数据可帮助受限环境内的复核人员判断按钮函数是否复用相同的字符串常量，但**不能证明**这些常量是变量名、条件值、招式或 UI 文案，也不能证明 FFDec 语义和运行时行为。若来源分析超限、下溢或未解析，对应函数的等价类字段必须为 `null`，不得把部分证据当成完整结果。编号只在同一份报告中有意义，不能跨版本持久引用。
+
+## M1 增量：ActionPush 字符串原始位置索引（仅元数据）
+
+对完整的 `bounded_origin_candidates` 函数体，新增 `literal_string_locations`：每条字符串记录 `push_record_offset_uncompressed`（解压后 SWF 中 ActionPush 指令起始偏移）、`push_element_index`（该 ActionPush 内从 0 开始的元素序号，包含非字符串元素）和报告内 `class_label`。索引与原有字符串等价类顺序逐项一致。对未解析、超限或候选下溢的函数体，该字段为 `null`，不能视为零条。
+
+该索引只定位**静态 ActionPush 指令**，不宣称指令在 Flash VM 中可达，也不推断字符串是否被 GetVariable、SetVariable 或 ActionIf 消费。JSON 不含原始字符串、哈希、脚本正文或素材。后续须在受限环境结合原始 ActionRecord 栈路径核验具体消费者，方可建立变量与条件来源对应。
