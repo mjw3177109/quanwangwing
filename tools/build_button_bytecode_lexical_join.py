@@ -75,7 +75,7 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
     if set(source_rows) != set(lex_index) or set(source_rows) != set(cross_index):
         raise ValueError("Missing or extra source-keyed button record")
     totals = Counter({cls: 0 for cls in CLASSES})
-    raw_total = lexical_total = rejected = 0
+    raw_total = lexical_total = rejected = body_byte_total = 0
     rows = []
     for key in sorted(source_rows):
         event, lex, cross = source_rows[key], lex_index[key], cross_index[key]
@@ -113,10 +113,24 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
         try:
             parsed = partition_top_level_actions(payload)
         except ActionStructureError:
-            status, functions = "source_partition_rejected", None
+            status, functions, function_ranges = "source_partition_rejected", None, None
             rejected += 1
         else:
             functions = _count(parsed["declared_function_count"], "bytecode function count")
+            # Source-relative half-open ranges locate the actual declared function
+            # bodies for restricted FFDec review, without exposing names or bytes.
+            function_ranges = [{
+                "opcode": "DefineFunction" if rec.opcode == 0x9B else "DefineFunction2",
+                "declaration_offset_uncompressed": offset + 4 + rec.start,
+                "body_start_uncompressed": offset + 4 + rec.body_start,
+                "body_end_uncompressed": offset + 4 + rec.body_end,
+                "body_byte_length": rec.body_end - rec.body_start,
+            } for rec in parsed["records"] if rec.body_start is not None]
+            if (len(function_ranges) != functions or
+                    sum(item["body_byte_length"] for item in function_ranges)
+                    != parsed["declared_function_body_byte_total"]):
+                raise ValueError("Function body range accounting mismatch")
+            body_byte_total += parsed["declared_function_body_byte_total"]
             raw_total += functions
             status = ("both_present_unverified" if functions and candidates else
                       "bytecode_only_candidate" if functions else
@@ -128,6 +142,7 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
             "action_offset_uncompressed": offset,
             "ffdec_export_sha256": lex["ffdec_export_sha256"],
             "bytecode_declared_function_count": functions,
+            "bytecode_function_body_ranges": function_ranges,
             "lexical_function_candidate_count": candidates,
             "comparison_class": status,
             "decompiled_semantics_verified": False,
@@ -140,6 +155,7 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
         "compared_button_action_count": len(rows),
         "source_partition_rejected_count": rejected,
         "bytecode_declared_function_total_on_partitioned_records": raw_total,
+        "bytecode_function_body_byte_total_on_partitioned_records": body_byte_total,
         "lexical_function_candidate_total": lexical_total,
         "classification_counts": dict(totals),
         "decompiled_semantics_verified": False,
@@ -148,6 +164,8 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
         "limitations": [
             "SWF bytecode declarations and FFDec lexical functions are different representations.",
             "A zero lexical count does not prove FFDec omitted or miscompiled a function.",
+            "Function body offsets are half-open source locations, not verified execution paths.",
+            "Function bodies are not decoded or semantically compared with FFDec output.",
             "No original script text, function names, SWF bytes, or media are emitted.",
             "No Flash VM execution, semantic equivalence, move or 1:1 fidelity is established.",
         ],
