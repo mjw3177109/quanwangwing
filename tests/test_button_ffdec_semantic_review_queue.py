@@ -32,7 +32,10 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
                                      "lexical_function_candidate_count": 0,
                                      "lexical_branch_keyword_counts": {"if": 30, "return": 7},
                                      "lexical_branch_keyword_line_numbers": {
-                                         "if": list(range(1, 31)), "return": list(range(1, 8))}}]}
+                                         "if": list(range(1, 31)), "return": list(range(1, 8))},
+                                     "lexical_branch_keyword_scope_counts": {
+                                         "if": {"inside_recognized_function": 0, "outside_recognized_function": 30},
+                                         "return": {"inside_recognized_function": 0, "outside_recognized_function": 7}}}]}
         self.crosswalk = {"source_sha256": self.sha, "matched_export_count": 1,
                           "records": [{"button_character_id": 693, "action_offset_uncompressed": 100,
                                        "ffdec_export_sha256": self.export_sha,
@@ -59,6 +62,7 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
         self.assertEqual(row["ffdec_event_lexical_if_keyword_count"], 30)
         self.assertEqual(row["ffdec_event_lexical_if_line_numbers"], list(range(1, 31)))
         self.assertEqual(row["ffdec_event_lexical_return_line_numbers"], list(range(1, 8)))
+        self.assertEqual(row["ffdec_event_lexical_if_scope_counts"]["outside_recognized_function"], 30)
         self.assertEqual(row["source_if_operand_origin_types"], ["literal_string"])
         self.assertFalse(row["decompiled_semantics_verified"])
         self.assertTrue(row["manual_semantic_review_required"])
@@ -74,6 +78,23 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
             self.build()
         self.lexical["records"][0]["lexical_branch_keyword_line_numbers"]["return"] = [True, 2, 3, 4, 5, 6, 7]
         with self.assertRaisesRegex(ValueError, "branch line/count mismatch"):
+            self.build()
+
+    def test_branch_scope_count_mismatch_rejected(self):
+        self.lexical["records"][0]["lexical_branch_keyword_scope_counts"]["if"][
+            "inside_recognized_function"] = 1
+        with self.assertRaisesRegex(ValueError, "branch scope/count mismatch"):
+            self.build()
+
+    def test_branch_scope_negative_or_bool_rejected(self):
+        counts = self.lexical["records"][0]["lexical_branch_keyword_scope_counts"]["return"]
+        counts["inside_recognized_function"] = -1
+        counts["outside_recognized_function"] = 8
+        with self.assertRaisesRegex(ValueError, "branch scope/count mismatch"):
+            self.build()
+        counts["inside_recognized_function"] = True
+        counts["outside_recognized_function"] = 6
+        with self.assertRaisesRegex(ValueError, "branch scope/count mismatch"):
             self.build()
 
     def test_export_hash_mismatch_rejected(self):

@@ -184,6 +184,9 @@ jobs:
                   or {r["button_character_id"] for r in rows if r["priority_graph_difference_review"]} != {693, 701, 715}
                   or d["lexical_function_candidate_total"] != d["lexical_matched_function_scope_total"] + d["lexical_unmatched_function_candidate_total"]
                   or any(r["decompiled_semantics_verified"] is not False or r["runtime_behavior_verified"] is not False for r in rows)
+                  or any(any(sum(r["lexical_branch_keyword_scope_counts"][word].values())
+                                 != r["lexical_branch_keyword_counts"][word]
+                                 for word in ("if", "return")) for r in rows)
                   or d["decompiled_semantics_verified"] is not False
                   or d["runtime_behavior_verified"] is not False):
               raise SystemExit("Restricted FFDec button lexical audit regression")

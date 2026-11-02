@@ -34,3 +34,9 @@ python3 tools/build_button_ffdec_semantic_review_queue.py \
 `build_button_ffdec_lexical_audit.py` 现对经过 SHA-256 校验的 FFDec 按钮事件源码记录 `if` / `return` 词法命中行号（从 1 开始）。字符串和注释先屏蔽；同一行的多次命中保留重复行号，故行号数组长度与事件级关键词计数一致。`build_button_ffdec_semantic_review_queue.py` 对计数、排序、类型和缺失证据执行失败即停止的检查，并在受限复核队列中提供 `ffdec_event_lexical_if_line_numbers`、`ffdec_event_lexical_return_line_numbers`。
 
 审核人员可用原始 SWF 函数体字节偏移及 FFDec 导出路径/哈希定位同一事件，再用行号查看 FFDec 反编译输出的分支位置。**这些行号属于整个 FFDec 按钮事件，不能直接对应原始嵌套 DefineFunction 的 `ActionIf`，也不能证明两个表示的语义一致。** 未导出任何脚本行文本、操作数、图片或音频；原版内容仍须留在受限环境。
+
+## M1 增量：FFDec 事件关键词的候选函数体归属
+
+受限 FFDec 词法审计现按**字符偏移**（不是仅凭行号）将 `if` / `return` 命中分为 `inside_recognized_function` 和 `outside_recognized_function`。嵌套函数内的命中只计一次，同一行的函数外命中不会误归入函数体。结果通过 `lexical_branch_keyword_scope_counts` 进入元数据 artifact，复核队列以 `ffdec_event_lexical_if_scope_counts` / `ffdec_event_lexical_return_scope_counts` 暴露计数，并要求两类之和严格等于已核验的事件关键词数；缺失、负数、布尔值或不闭合证据均拒绝。
+
+此分类仅用于区分 FFDec **整个按钮事件**中的词法候选范围，不把函数外关键词映射成原始嵌套 DefineFunction，也不推断反编译缺陷或运行时执行。词法括号匹配和正则字面量仍可能导致误判。原始脚本、字节码、图像及音频不进入 artifact。
