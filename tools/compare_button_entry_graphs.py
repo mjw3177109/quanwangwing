@@ -61,6 +61,22 @@ def compare_entry_graphs(legacy: dict, partitioned: dict) -> dict:
             raise ValueError("Unverified partitioned row claims runtime execution")
         if verified != (row["status"] == "verified_graph"):
             raise ValueError("Partitioned graph has inconsistent verified status")
+    # Source producer emits a closed status histogram for every action row.
+    # Validate it before comparing the legacy tail subset, so partitioned-only
+    # rejected/unsupported rows cannot disappear from the accounting.
+    status_names = (
+        "verified_graph", "unsupported_nested_scope", "malformed_or_unsupported",
+        "missing_top_level_end", "graph_rejected",
+    )
+    declared_statuses = partitioned["graph_status_counts"]
+    if type(declared_statuses) is not dict or set(declared_statuses) != set(status_names):
+        raise ValueError("Partitioned graph status histogram keys mismatch")
+    if any(row["status"] not in status_names for row in new_rows):
+        raise ValueError("Unknown partitioned graph status")
+    observed_statuses = Counter(row["status"] for row in new_rows)
+    if any(_count(declared_statuses[name], f"status {name}") != observed_statuses[name]
+           for name in status_names):
+        raise ValueError("Partitioned graph status histogram mismatch")
     if (_count(partitioned["graph_verified_count"], "verified graph count") !=
             sum(row["graph_verified"] is True for row in new_rows)):
         raise ValueError("Partitioned graph verified-count mismatch")

@@ -48,6 +48,17 @@ because it has no legacy counterpart. Three synthetic regression tests cover
 these cases; the hourly workflow already runs the complete Python test suite.
 This is metadata validation, not new evidence of game behavior.
 
+## Complete partitioned status accounting
+
+The comparison also requires the source graph's five-category
+`graph_status_counts` histogram to exactly match **all** 72 (or however many
+the verified source reports) partitioned action rows, including those with no
+legacy tail match. Unknown statuses, missing categories, forged totals and
+non-integer counts fail closed. This closes a gap where a producer's declared
+rejected/unsupported row totals could diverge from its actual rows while the
+three legacy-matched rows still compared successfully. This is metadata
+integrity only; no new Flash execution evidence or original asset bytes.
+
 ## Numeric difference triage (not runtime verification)
 
 Verified source-matched rows now receive a metadata-only `difference_class`:
