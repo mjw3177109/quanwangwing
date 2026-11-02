@@ -38,7 +38,10 @@ jobs:
       - name: Test FFDec button lexical audit parser
         run: python3 -m unittest discover -s tests -p 'test_button_ffdec_lexical_audit.py' -v
 
-      - name: Test original bytecode versus FFDec lexical join\n        run: python3 -m unittest discover -s tests -p 'test_button_bytecode_lexical_join.py' -v\n\n      - name: Export ActionScript with bounded retry for partial FFDec output
+      - name: Test original bytecode versus FFDec lexical join
+        run: python3 -m unittest discover -s tests -p 'test_button_bytecode_lexical_join.py' -v
+
+      - name: Export ActionScript with bounded retry for partial FFDec output
         run: |
           for attempt in 1 2 3; do
             echo "FFDec export attempt $attempt/3"
