@@ -23,3 +23,9 @@ CI 仅上传 JSON 元数据，绝不上传原始 SWF、FFDec 导出的 AS2 正�
 对每条已按 character ID 和解压后偏移配对的记录，重新从 SWF 原始解压字节读取 `CondActionSize`（小端 16 位）及 `CondFlags`（小端 16 位）。要求原始事件标志与已核验的来源记录一致；`CondActionSize=0` 必须与来源的末记录标志一致，非零长度必须等于 4 字节头部加动作字节数。即使来源记录和 FFDec 交叉表中的标志被同时改成相同的错误值，也不能绕过原始字节校验。
 
 这只加固来源完整性，不验证 ActionScript 反编译等价性、分支运行可达性、按键行为或 1:1 战斗。仍不发布原始 SWF、AS2 正文或美术音频。
+
+## 函数体字节范围定位（受限复核用）
+
+对结构分层成功的 ButtonCondAction，新增 `bytecode_function_body_ranges`：仅包含 DefineFunction/DefineFunction2 的 opcode 类别、声明的解压后 SWF 绝对偏移、函数体的半开区间 `[body_start_uncompressed, body_end_uncompressed)` 和字节长度。偏移计算为原始动作容器头部位置 + 4 字节 + 分层解析器返回的相对位置。新增全局 `bytecode_function_body_byte_total_on_partitioned_records`，在 CI 中与逐条函数体长度闭合核验。
+
+若某条动作流的结构分层失败，该记录的范围为 `null`（未验证），不能当成空函数表；合法无函数的动作流则为 `[]`。此数据用于在**受限环境**准确定位按钮 693、701、715 的原始函数体，再与 FFDec 输出交叉审查。只输出偏移、长度、opcode 类别，不输出函数名、ActionRecord 正文或素材；不会解析函数体指令、验证反编译语义或推断运行时可达性。源字节、原版导出仍不得公开。
