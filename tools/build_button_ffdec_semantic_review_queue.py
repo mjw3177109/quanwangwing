@@ -23,7 +23,7 @@ def _index(records, name):
 
 
 
-def _source_scope(body: dict, origin: dict, event_offset: int) -> dict:
+def _source_scope(body: dict, origin: dict, payload_start: int, payload_end: int) -> dict:
     """Validate and expose half-open source coordinates, never source bytes."""
     keys = ("declaration_offset_uncompressed", "body_start_uncompressed",
             "body_end_uncompressed", "body_byte_length")
@@ -31,11 +31,24 @@ def _source_scope(body: dict, origin: dict, event_offset: int) -> dict:
     if any(type(v) is not int for v in values):
         raise ValueError("Invalid source function scope coordinates")
     declaration, start, end, size = values
-    if not (event_offset <= declaration < start <= end and size == end - start):
+    if not (payload_start <= declaration < start <= end <= payload_end and size == end - start):
         raise ValueError("Invalid source function scope boundaries")
     status = body.get("body_partition_status")
     if status not in ("partitioned", "rejected"):
         raise ValueError("Invalid source function scope partition status")
+    # Cross-check complete origin evidence against the source ActionRecord histogram.
+    if status == "partitioned" and origin.get("origin_status") == "bounded_origin_candidates":
+        histogram = body.get("body_opcode_histogram")
+        total = body.get("body_top_level_record_count")
+        if (type(histogram) is not dict or type(total) is not int or total < 0
+                or any(type(n) is not int or n < 0 for n in histogram.values())
+                or sum(histogram.values()) != total):
+            raise ValueError("Source function opcode histogram mismatch")
+        for opcode, field in (("0x1c", "source_get_variable_opcode_count"),
+                              ("0x1d", "source_set_variable_opcode_count"),
+                              ("0x9d", "source_if_opcode_count")):
+            if origin.get(field) != histogram.get(opcode, 0):
+                raise ValueError("Source function operand opcode count mismatch")
     return {
         "declaration_offset_uncompressed": declaration,
         "body_start_uncompressed": start,
@@ -81,13 +94,20 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
             raise ValueError("FFDec export path or content hash mismatch")
         if src["lexical_function_candidate_count"] != lex["lexical_function_candidate_count"]:
             raise ValueError("Lexical function count mismatch")
+        # Crosswalk event lengths were checked against the original SWF bytes.
+        event_length = exp.get("source_action_byte_length")
+        if type(event_length) is not int or event_length <= 0:
+            raise ValueError("Invalid source button event payload length")
+        payload_start = key[1] + 4  # CondActionSize and CondFlags
+        payload_end = payload_start + event_length
         bodies = src.get("bytecode_function_body_ranges") or []
         if classification != "source_partition_rejected" and len(bodies) != src["bytecode_declared_function_count"]:
             raise ValueError("Source function range count mismatch")
         body_rows = []
         scope_rows = []
         seen_starts = set()
-        for body in bodies:
+        last_body_end = payload_start
+        for body in sorted(bodies, key=lambda item: item["declaration_offset_uncompressed"]):
             origin_key = (key[0], body["body_start_uncompressed"])
             origin = origin_index.get(origin_key)
             if origin is None:
@@ -95,7 +115,11 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
             if origin_key in seen_starts:
                 raise ValueError("Duplicate source function scope")
             seen_starts.add(origin_key)
-            scope_rows.append(_source_scope(body, origin, key[1]))
+            scope = _source_scope(body, origin, payload_start, payload_end)
+            if scope["declaration_offset_uncompressed"] < last_body_end:
+                raise ValueError("Overlapping source function scopes")
+            last_body_end = scope["body_end_uncompressed_exclusive"]
+            scope_rows.append(scope)
             used_origins.add(origin_key)
             body_rows.append(origin)
         if classification == "neither_detected":

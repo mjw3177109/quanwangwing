@@ -21,7 +21,9 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
                                       "body_start_uncompressed": 110,
                                       "body_end_uncompressed": 164,
                                       "body_byte_length": 54,
-                                      "body_partition_status": "partitioned"}],
+                                      "body_partition_status": "partitioned",
+                                      "body_top_level_record_count": 3,
+                                      "body_opcode_histogram": {"0x1c": 1, "0x1d": 1, "0x9d": 1}}],
                                   "lexical_function_candidate_count": 0}]}
         self.lexical = {"source_sha256": self.sha, "audited_button_action_count": 1,
                         "records": [{"button_character_id": 693, "action_offset_uncompressed": 100,
@@ -32,10 +34,13 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
         self.crosswalk = {"source_sha256": self.sha, "matched_export_count": 1,
                           "records": [{"button_character_id": 693, "action_offset_uncompressed": 100,
                                        "ffdec_export_sha256": self.export_sha,
-                                       "ffdec_export_path": "scripts/DefineButton2_693/event.as"}]}
+                                       "ffdec_export_path": "scripts/DefineButton2_693/event.as",
+                                       "source_action_byte_length": 70}]}
         self.origins = {"source_sha256": self.sha, "function_body_count": 1,
                         "records": [{"button_character_id": 693, "function_body_start_uncompressed": 110,
                                      "origin_status": "bounded_origin_candidates",
+                                     "source_get_variable_opcode_count": 1,
+                                     "source_set_variable_opcode_count": 1,
                                      "source_if_opcode_count": 1,
                                      "if_operand_origin_counts": {"literal_string": 1}}]}
 
@@ -99,6 +104,42 @@ class ButtonFFDecSemanticReviewQueueTests(unittest.TestCase):
         self.assertFalse(row["operand_origins_complete"])
         self.assertIsNone(row["source_if_operand_origin_types"])
 
+
+    def test_function_body_cannot_escape_button_event(self):
+        self.crosswalk["records"][0]["source_action_byte_length"] = 59
+        with self.assertRaisesRegex(ValueError, "scope boundaries"):
+            self.build()
+
+    def test_function_declaration_cannot_start_in_event_header(self):
+        self.join["records"][0]["bytecode_function_body_ranges"][0][
+            "declaration_offset_uncompressed"] = 102
+        with self.assertRaisesRegex(ValueError, "scope boundaries"):
+            self.build()
+
+    def test_source_opcode_histogram_must_close(self):
+        self.join["records"][0]["bytecode_function_body_ranges"][0][
+            "body_top_level_record_count"] = 4
+        with self.assertRaisesRegex(ValueError, "opcode histogram mismatch"):
+            self.build()
+
+    def test_origin_opcode_count_must_match_source(self):
+        self.origins["records"][0]["source_if_opcode_count"] = 2
+        with self.assertRaisesRegex(ValueError, "operand opcode count mismatch"):
+            self.build()
+
+    def test_overlapping_function_scopes_rejected(self):
+        body = deepcopy(self.join["records"][0]["bytecode_function_body_ranges"][0])
+        body.update(declaration_offset_uncompressed=160,
+                    body_start_uncompressed=166, body_end_uncompressed=170,
+                    body_byte_length=4)
+        self.join["records"][0]["bytecode_function_body_ranges"].append(body)
+        self.join["records"][0]["bytecode_declared_function_count"] = 2
+        origin = deepcopy(self.origins["records"][0])
+        origin["function_body_start_uncompressed"] = 166
+        self.origins["records"].append(origin)
+        self.origins["function_body_count"] = 2
+        with self.assertRaisesRegex(ValueError, "Overlapping source function scopes"):
+            self.build()
 
 if __name__ == "__main__":
     unittest.main()
