@@ -231,6 +231,35 @@ jobs:
               raise SystemExit("Original bytecode / FFDec lexical evidence join regression")
           PY
 
+      - name: Audit source-backed function branch targets (metadata only)
+        run: |
+          python3 tools/build_button_function_branch_audit.py \
+            --swf 拳皇wing1.4.swf \
+            --join build/as2-probe/button-bytecode-lexical-join.json \
+            --output build/as2-probe/button-function-branch-audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          join = json.loads((root / "button-bytecode-lexical-join.json").read_text(encoding="utf-8"))
+          audit = json.loads((root / "button-function-branch-audit.json").read_text(encoding="utf-8"))
+          expected = sum(
+              (f["body_opcode_histogram"].get("0x99", 0) +
+               f["body_opcode_histogram"].get("0x9d", 0))
+              for row in join["records"] for f in (row["bytecode_function_body_ranges"] or [])
+              if f["body_partition_status"] == "partitioned")
+          if (audit["source_sha256"] != join["source_sha256"]
+                  or audit["function_body_count"] != join["bytecode_declared_function_total_on_partitioned_records"]
+                  or audit["rejected_function_body_count"] != join["bytecode_function_body_partition_status_counts"]["rejected"]
+                  or audit["branch_record_count"] != expected
+                  or sum(audit["branch_target_classification_counts"].values()) != expected
+                  or len(audit["records"]) != expected
+                  or audit["decompiled_semantics_verified"] is not False
+                  or audit["runtime_behavior_verified"] is not False
+                  or any(rec["execution_verified"] is not False for rec in audit["records"])):
+              raise SystemExit("Original function branch target audit regression")
+          PY
+
       - name: Build SWF ExportAssets candidate index
         run: python3 tools/build_asset_index.py --manifest build/as2-probe/swf-manifest.json --output build/as2-probe/asset-index.json
 
@@ -735,6 +764,7 @@ jobs:
             build/as2-probe/button-ffdec-export-crosswalk.json
             build/as2-probe/button-ffdec-lexical-audit.json
             build/as2-probe/button-bytecode-lexical-join.json
+            build/as2-probe/button-function-branch-audit.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-zero-frame-init-join.json
