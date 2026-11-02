@@ -1,0 +1,18 @@
+# M1：按钮字节码与 FFDec 词法语义复核队列
+
+本增量生成可追溯的**人工语义复核队列**，将原始 SWF 的 DefineFunction 函数体证据、FFDec 事件级词法统计、导出脚本 SHA-256 和操作数来源候选合并。工具严格校验同一 SWF SHA-256、按钮事件偏移、FFDec 导出路径与内容 SHA-256、函数体来源覆盖。
+
+运行：
+
+```bash
+python3 tools/build_button_ffdec_semantic_review_queue.py \
+  --join build/as2-probe/button-bytecode-lexical-join.json \
+  --lexical build/as2-probe/button-ffdec-lexical-audit.json \
+  --crosswalk build/as2-probe/button-ffdec-export-crosswalk.json \
+  --origins build/as2-probe/button-operand-origin-audit.json \
+  --output build/as2-probe/button-ffdec-semantic-review-queue.json
+```
+
+输出只包含需要人工复核的按钮、原始函数声明数、原始函数体 ActionIf 指令数、FFDec **整个按钮事件**的 `if` / `return` 词法关键词数、来源状态与已验证导出哈希。FFDec 事件级关键词**不能与嵌套函数体 opcode 一一对应**，因此任何差异都不等于 FFDec 反编译错误；`decompiled_semantics_verified` 和 `runtime_behavior_verified` 始终为 false。
+
+下一步在受限 runner/本地读取对应 AS2 源码，逐项人工对照原始函数作用域、分支条件、变量与调用关系；验证前不把该队列当作动作数据或 1:1 证据。队列不包含原版 SWF 字节、脚本正文、美术、音频或操作数值。

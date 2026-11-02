@@ -363,6 +363,39 @@ jobs:
               raise SystemExit("Button operand origin provenance accounting regression")
           PY
 
+      - name: Test hash-verified FFDec semantic review queue
+        run: python3 -m unittest discover -s tests -p 'test_button_ffdec_semantic_review_queue.py' -v
+
+      - name: Build restricted FFDec semantic review queue (metadata only)
+        run: |
+          python3 tools/build_button_ffdec_semantic_review_queue.py \
+            --join build/as2-probe/button-bytecode-lexical-join.json \
+            --lexical build/as2-probe/button-ffdec-lexical-audit.json \
+            --crosswalk build/as2-probe/button-ffdec-export-crosswalk.json \
+            --origins build/as2-probe/button-operand-origin-audit.json \
+            --output build/as2-probe/button-ffdec-semantic-review-queue.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "button-ffdec-semantic-review-queue.json").read_text(encoding="utf-8"))
+          join = json.loads((root / "button-bytecode-lexical-join.json").read_text(encoding="utf-8"))
+          if (d["source_sha256"] != join["source_sha256"]
+                  or d["compared_button_action_count"] != join["compared_button_action_count"]
+                  or d["manual_review_queue_count"] != len(d["records"])
+                  or d["manual_review_classification_counts"] !=
+                      {k: v for k, v in join["classification_counts"].items()
+                       if k != "neither_detected" and v}
+                  or {r["button_character_id"] for r in d["records"]} != {693, 701, 715}
+                  or any(not r["manual_semantic_review_required"]
+                         or r["decompiled_semantics_verified"] is not False
+                         or r["runtime_behavior_verified"] is not False
+                         for r in d["records"])
+                  or d["decompiled_semantics_verified"] is not False
+                  or d["runtime_behavior_verified"] is not False):
+              raise SystemExit("FFDec semantic review queue provenance regression")
+          PY
+
       - name: Build SWF ExportAssets candidate index
         run: python3 tools/build_asset_index.py --manifest build/as2-probe/swf-manifest.json --output build/as2-probe/asset-index.json
 
@@ -871,6 +904,7 @@ jobs:
             build/as2-probe/button-function-cfg-audit.json
             build/as2-probe/button-function-stack-audit.json
             build/as2-probe/button-operand-origin-audit.json
+            build/as2-probe/button-ffdec-semantic-review-queue.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-zero-frame-init-join.json
