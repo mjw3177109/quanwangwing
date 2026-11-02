@@ -60,6 +60,30 @@ class ButtonOperandOriginAuditTests(unittest.TestCase):
         report = self.run_body(body, max_states=1)
         self.assertEqual(report["origin_status_counts"]["analysis_limit_reached"], 1)
 
+    def test_limit_after_partial_origin_evidence_withholds_counts(self):
+        body = b"\x96\x03\x00\x00x\x00\x1c\x9d\x02\x00\x00\x00\x00"
+        branch = {"function_body_start_uncompressed": 0, "branch_offset_uncompressed": 7,
+                  "target_classification": "record_start", "target_offset_uncompressed": 12}
+        report = self.run_body(body, [branch], max_states=3)
+        row = report["records"][0]
+        self.assertEqual(row["origin_status"], "analysis_limit_reached")
+        self.assertIsNone(row["if_operand_origin_counts"])
+        self.assertIsNone(row["variable_name_operand_origin_counts"])
+        self.assertEqual(report["if_operand_origin_totals"], {})
+        self.assertEqual(report["variable_name_operand_origin_totals"], {})
+
+    def test_underflow_does_not_claim_complete_producer_origins(self):
+        body = b"\x9d\x02\x00\x00\x00\x00"
+        branch = {"function_body_start_uncompressed": 0, "branch_offset_uncompressed": 0,
+                  "target_classification": "record_start", "target_offset_uncompressed": 5}
+        report = self.run_body(body, [branch])
+        row = report["records"][0]
+        self.assertEqual(row["origin_status"], "candidate_underflow_detected")
+        self.assertEqual(row["candidate_underflow_record_count"], 1)
+        self.assertIsNone(row["if_operand_origin_counts"])
+        self.assertIsNone(row["variable_name_operand_origin_counts"])
+        self.assertEqual(report["if_operand_origin_totals"], {})
+
     def test_invalid_limits_rejected(self):
         with self.assertRaisesRegex(ValueError, "Positive integer"):
             self.run_body(b"\x00", max_depth=0)
