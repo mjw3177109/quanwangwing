@@ -282,6 +282,9 @@ jobs:
                   or sum(statuses.values()) != cfg["function_body_count"]
                   or cfg["partitioned_record_total"] != join["bytecode_function_body_record_total"]
                   or cfg["complete_graph_record_total"] != cfg["static_entry_reachable_candidate_total"] + cfg["static_entry_unreachable_candidate_total"]
+                  or cfg["invalid_push_payload_total"] != sum((r["invalid_push_payload_count"] or 0) for r in cfg["records"])
+                  or set(cfg["push_operand_type_totals"]) != {key for row in cfg["records"] for key in (row["push_operand_type_counts"] or {})}
+                  or any(cfg["push_operand_type_totals"][key] != sum((row["push_operand_type_counts"] or {}).get(key, 0) for row in cfg["records"]) for key in cfg["push_operand_type_totals"])
                   or len(cfg["records"]) != cfg["function_body_count"]
                   or cfg["runtime_reachability_verified"] is not False
                   or cfg["decompiled_semantics_verified"] is not False

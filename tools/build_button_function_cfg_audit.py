@@ -12,6 +12,33 @@ from build_button_function_branch_audit import audit_branches
 SEQUENTIAL = frozenset((0x96, 0x0C, 0x1C, 0x1D, 0x3F))
 TERMINATORS = frozenset((0x00, 0x3E))
 BRANCHES = frozenset((0x99, 0x9D))
+# SWF ActionPush (0x96) element types; lengths only, never decoded values.
+PUSH_TYPES = {0: "string", 1: "float", 2: "null", 3: "undefined",
+              4: "register", 5: "boolean", 6: "double", 7: "integer",
+              8: "constant8", 9: "constant16"}
+PUSH_WIDTHS = {1: 4, 2: 0, 3: 0, 4: 1, 5: 1, 6: 8, 7: 4, 8: 1, 9: 2}
+
+
+def _push_type_counts(payload: bytes) -> Counter | None:
+    """Check every ActionPush element boundary; emit types, never operand values."""
+    pos = 0
+    counts = Counter()
+    while pos < len(payload):
+        kind = payload[pos]
+        pos += 1
+        if kind == 0:
+            terminator = payload.find(b"\x00", pos)
+            if terminator < 0:
+                return None
+            pos = terminator + 1
+        else:
+            width = PUSH_WIDTHS.get(kind)
+            if width is None or pos + width > len(payload):
+                return None
+            pos += width
+        counts[PUSH_TYPES[kind]] += 1
+    return counts
+
 
 
 def audit_function_cfg(join: dict, decompressed: bytes, source_sha256: str) -> dict:
@@ -28,6 +55,8 @@ def audit_function_cfg(join: dict, decompressed: bytes, source_sha256: str) -> d
                         "source_partition_rejected": 0})
     seen_bodies = set()
     total = complete = reachable = unreachable = 0
+    push_totals = Counter()
+    invalid_push_total = 0
     for row in join["records"]:
         for item in row.get("bytecode_function_body_ranges") or []:
             start, end = item["body_start_uncompressed"], item["body_end_uncompressed"]
@@ -41,7 +70,9 @@ def audit_function_cfg(join: dict, decompressed: bytes, source_sha256: str) -> d
                                 "graph_status": "source_partition_rejected",
                                 "static_entry_reachable_record_count": None,
                                 "static_entry_unreachable_record_count": None,
-                                "runtime_reachability_verified": False})
+                                "runtime_reachability_verified": False,
+                                "invalid_push_payload_count": None,
+                                "push_operand_type_counts": None})
                 continue
             body = decompressed[start:end]
             records = partition_top_level_actions(body)["records"]
@@ -49,10 +80,19 @@ def audit_function_cfg(join: dict, decompressed: bytes, source_sha256: str) -> d
             total += len(records)
             edges = {}
             unknown = invalid = conditional = unconditional = terminal = 0
+            invalid_push = 0
+            push_types = Counter()
             for rec in records:
                 if rec.opcode in TERMINATORS:
                     terminal += 1
                     edges[rec.start] = ()
+                elif rec.opcode == 0x96:
+                    types = _push_type_counts(body[rec.start + 3:rec.end])
+                    if types is None:
+                        invalid_push += 1
+                    else:
+                        push_types.update(types)
+                    edges[rec.start] = (rec.end,)
                 elif rec.opcode in SEQUENTIAL:
                     edges[rec.start] = (rec.end,)
                 elif rec.opcode in BRANCHES:
@@ -72,7 +112,7 @@ def audit_function_cfg(join: dict, decompressed: bytes, source_sha256: str) -> d
                 else:
                     unknown += 1
                     edges[rec.start] = ()
-            if invalid or unknown:
+            if invalid or unknown or invalid_push:
                 status = "unresolved_opcode_or_target"
                 count_reached = count_missing = None
             else:
@@ -92,6 +132,8 @@ def audit_function_cfg(join: dict, decompressed: bytes, source_sha256: str) -> d
                 complete += len(records)
                 reachable += count_reached
                 unreachable += count_missing
+            push_totals.update(push_types)
+            invalid_push_total += invalid_push
             statuses[status] += 1
             results.append({
                 "button_character_id": row["button_character_id"],
@@ -102,6 +144,8 @@ def audit_function_cfg(join: dict, decompressed: bytes, source_sha256: str) -> d
                 "unconditional_branch_count": unconditional,
                 "terminal_record_count": terminal,
                 "unmodeled_opcode_count": unknown,
+                "invalid_push_payload_count": invalid_push,
+                "push_operand_type_counts": dict(sorted(push_types.items())),
                 "invalid_branch_target_count": invalid,
                 "static_entry_reachable_record_count": count_reached,
                 "static_entry_unreachable_record_count": count_missing,
@@ -120,12 +164,15 @@ def audit_function_cfg(join: dict, decompressed: bytes, source_sha256: str) -> d
         "complete_graph_record_total": complete,
         "static_entry_reachable_candidate_total": reachable,
         "static_entry_unreachable_candidate_total": unreachable,
+        "invalid_push_payload_total": invalid_push_total,
+        "push_operand_type_totals": dict(sorted(push_totals.items())),
         "decompiled_semantics_verified": False,
         "runtime_reachability_verified": False,
         "records": results,
         "limitations": [
             "ActionIf includes both syntactic paths; conditions and stack are not evaluated.",
-            "Unknown control opcodes or invalid targets invalidate complete graph claims.",
+            "Unknown control opcodes, invalid branch targets or malformed ActionPush operands invalidate complete graph claims.",
+            "ActionPush type and length checks do not interpret pushed values or branch conditions.",
             "Static entry paths are candidates, not Flash VM execution or gameplay behavior.",
             "No original operands, script text, SWF bytes, or media are emitted.",
         ],
