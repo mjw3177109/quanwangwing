@@ -76,6 +76,9 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
         raise ValueError("Missing or extra source-keyed button record")
     totals = Counter({cls: 0 for cls in CLASSES})
     raw_total = lexical_total = rejected = body_byte_total = 0
+    body_status_counts = Counter({"partitioned": 0, "rejected": 0})
+    body_opcode_counts = Counter()
+    body_record_total = 0
     rows = []
     for key in sorted(source_rows):
         event, lex, cross = source_rows[key], lex_index[key], cross_index[key]
@@ -119,13 +122,43 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
             functions = _count(parsed["declared_function_count"], "bytecode function count")
             # Source-relative half-open ranges locate the actual declared function
             # bodies for restricted FFDec review, without exposing names or bytes.
-            function_ranges = [{
-                "opcode": "DefineFunction" if rec.opcode == 0x9B else "DefineFunction2",
-                "declaration_offset_uncompressed": offset + 4 + rec.start,
-                "body_start_uncompressed": offset + 4 + rec.body_start,
-                "body_end_uncompressed": offset + 4 + rec.body_end,
-                "body_byte_length": rec.body_end - rec.body_start,
-            } for rec in parsed["records"] if rec.body_start is not None]
+            function_ranges = []
+            for rec in parsed["records"]:
+                if rec.body_start is None:
+                    continue
+                # Decode record boundaries only, within the declared function body.
+                # Nested With/Try or malformed bodies remain explicitly unverified.
+                body = payload[rec.body_start:rec.body_end]
+                try:
+                    body_partition = partition_top_level_actions(body)
+                except ActionStructureError:
+                    body_status = "rejected"
+                    body_records = body_histogram = body_first_end = body_post_end = None
+                else:
+                    body_status = "partitioned"
+                    body_records = body_partition["top_level_record_count"]
+                    body_histogram = dict(sorted(Counter(
+                        f"0x{item.opcode:02x}" for item in body_partition["records"]
+                    ).items()))
+                    first_end = body_partition["first_top_level_action_end_offset"]
+                    body_first_end = (offset + 4 + rec.body_start + first_end
+                                      if first_end is not None else None)
+                    body_post_end = body_partition["top_level_post_end_record_count"]
+                    body_opcode_counts.update(body_histogram)
+                    body_record_total += body_records
+                body_status_counts[body_status] += 1
+                function_ranges.append({
+                    "opcode": "DefineFunction" if rec.opcode == 0x9B else "DefineFunction2",
+                    "declaration_offset_uncompressed": offset + 4 + rec.start,
+                    "body_start_uncompressed": offset + 4 + rec.body_start,
+                    "body_end_uncompressed": offset + 4 + rec.body_end,
+                    "body_byte_length": rec.body_end - rec.body_start,
+                    "body_partition_status": body_status,
+                    "body_top_level_record_count": body_records,
+                    "body_opcode_histogram": body_histogram,
+                    "body_first_action_end_offset_uncompressed": body_first_end,
+                    "body_post_end_record_count": body_post_end,
+                })
             if (len(function_ranges) != functions or
                     sum(item["body_byte_length"] for item in function_ranges)
                     != parsed["declared_function_body_byte_total"]):
@@ -156,6 +189,9 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
         "source_partition_rejected_count": rejected,
         "bytecode_declared_function_total_on_partitioned_records": raw_total,
         "bytecode_function_body_byte_total_on_partitioned_records": body_byte_total,
+        "bytecode_function_body_partition_status_counts": dict(body_status_counts),
+        "bytecode_function_body_record_total": body_record_total,
+        "bytecode_function_body_opcode_histogram": dict(sorted(body_opcode_counts.items())),
         "lexical_function_candidate_total": lexical_total,
         "classification_counts": dict(totals),
         "decompiled_semantics_verified": False,
@@ -165,7 +201,9 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
             "SWF bytecode declarations and FFDec lexical functions are different representations.",
             "A zero lexical count does not prove FFDec omitted or miscompiled a function.",
             "Function body offsets are half-open source locations, not verified execution paths.",
-            "Function bodies are not decoded or semantically compared with FFDec output.",
+            "Function body ActionRecord boundaries/opcode classes are structurally scanned only.",
+            "Rejected body partitions are not counted as verified; no operands or control flow are interpreted.",
+            "Function bodies are not semantically compared with FFDec output.",
             "No original script text, function names, SWF bytes, or media are emitted.",
             "No Flash VM execution, semantic equivalence, move or 1:1 fidelity is established.",
         ],
