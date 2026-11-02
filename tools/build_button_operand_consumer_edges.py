@@ -85,6 +85,15 @@ def trace_body(body, start, locations, branches, max_states=4096, max_depth=128)
                 or row['target_classification'] not in ('record_start', 'body_end')
                 or target not in boundaries):
             raise ValueError('Invalid source-backed branch target')
+        # Verify the branch's encoded signed SWF displacement, not just the
+        # report's claimed target and its ActionRecord boundary.
+        _, record_end, _ = by_offset[offset]
+        if record_end - offset != 5:
+            raise ValueError('Invalid ActionBranch payload length')
+        encoded_target = record_end + int.from_bytes(
+            body[offset + 3:record_end], 'little', signed=True)
+        if target != encoded_target:
+            raise ValueError('Branch target does not match source ActionRecord displacement')
         branch_targets[offset] = target
     if set(branch_targets) != {pos for pos, _, op in records if op in (0x99, 0x9D)}:
         raise ValueError('Missing or extra verified branch')
