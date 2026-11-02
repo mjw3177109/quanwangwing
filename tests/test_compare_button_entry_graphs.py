@@ -28,6 +28,13 @@ def fixture():
         "source_sha256": source,
         "embedded_action_record_count": 2,
         "graph_verified_count": 2,
+        "graph_status_counts": {
+            "verified_graph": 2,
+            "unsupported_nested_scope": 0,
+            "malformed_or_unsupported": 0,
+            "missing_top_level_end": 0,
+            "graph_rejected": 0,
+        },
         "runtime_reachability_verified": False,
         "records": [{
             "button_character_id": 693,
@@ -112,6 +119,8 @@ class GraphComparisonTests(unittest.TestCase):
         old, new = fixture()
         new["records"][0].update({"graph_verified": False, "status": "graph_rejected"})
         new["graph_verified_count"] = 1
+        new["graph_status_counts"]["verified_graph"] = 1
+        new["graph_status_counts"]["graph_rejected"] = 1
         r = compare_entry_graphs(old, new)
         self.assertEqual(r["compared_count"], 0)
         self.assertEqual(r["new_graph_unverified_count"], 1)
@@ -177,6 +186,26 @@ class GraphComparisonTests(unittest.TestCase):
         old, new = fixture()
         new["records"][1]["status"] = "graph_rejected"
         with self.assertRaisesRegex(ValueError, "inconsistent verified status"):
+            compare_entry_graphs(old, new)
+
+    def test_partitioned_only_status_histogram_tampering_rejected(self):
+        old, new = fixture()
+        new["graph_status_counts"]["graph_rejected"] = 1
+        with self.assertRaisesRegex(ValueError, "status histogram mismatch"):
+            compare_entry_graphs(old, new)
+
+    def test_partitioned_only_unknown_status_rejected(self):
+        old, new = fixture()
+        new["records"][1]["status"] = "unknown"
+        new["records"][1]["graph_verified"] = False
+        new["graph_verified_count"] = 1
+        with self.assertRaisesRegex(ValueError, "Unknown partitioned graph status"):
+            compare_entry_graphs(old, new)
+
+    def test_partitioned_status_histogram_missing_category_rejected(self):
+        old, new = fixture()
+        del new["graph_status_counts"]["unsupported_nested_scope"]
+        with self.assertRaisesRegex(ValueError, "status histogram keys mismatch"):
             compare_entry_graphs(old, new)
 
     def test_no_original_bytes_or_source_in_report(self):
