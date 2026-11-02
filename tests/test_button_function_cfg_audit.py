@@ -45,6 +45,42 @@ class FunctionCfgAuditTests(unittest.TestCase):
         self.assertEqual(audit_function_cfg(self.join, self.body, self.sha)[
             "static_entry_unreachable_candidate_total"], 1)
 
+    def test_push_operand_types_without_values(self):
+        self.use_body(b"\x96\x07\x00\x07\x01\x00\x00\x00\x02\x03\x3e",
+                      {"0x96": 1, "0x3e": 1}, 2)
+        d = audit_function_cfg(self.join, self.body, self.sha)
+        self.assertEqual(d["graph_status_counts"]["complete_syntactic_graph"], 1)
+        self.assertEqual(d["push_operand_type_totals"],
+                         {"integer": 1, "null": 1, "undefined": 1})
+        self.assertEqual(d["invalid_push_payload_total"], 0)
+
+    def test_truncated_push_integer_is_unresolved(self):
+        self.use_body(b"\x96\x02\x00\x07\x01\x3e",
+                      {"0x96": 1, "0x3e": 1}, 2)
+        d = audit_function_cfg(self.join, self.body, self.sha)
+        self.assertEqual(d["invalid_push_payload_total"], 1)
+        self.assertEqual(d["graph_status_counts"]["unresolved_opcode_or_target"], 1)
+        self.assertIsNone(d["records"][0]["static_entry_reachable_record_count"])
+
+    def test_unterminated_push_string_is_unresolved(self):
+        self.use_body(b"\x96\x02\x00\x00\x41\x3e",
+                      {"0x96": 1, "0x3e": 1}, 2)
+        d = audit_function_cfg(self.join, self.body, self.sha)
+        self.assertEqual(d["invalid_push_payload_total"], 1)
+
+    def test_unknown_push_element_type_is_unresolved(self):
+        self.use_body(b"\x96\x01\x00\xff\x3e",
+                      {"0x96": 1, "0x3e": 1}, 2)
+        d = audit_function_cfg(self.join, self.body, self.sha)
+        self.assertEqual(d["invalid_push_payload_total"], 1)
+
+    def test_empty_push_string_is_valid(self):
+        self.use_body(b"\x96\x02\x00\x00\x00\x3e",
+                      {"0x96": 1, "0x3e": 1}, 2)
+        d = audit_function_cfg(self.join, self.body, self.sha)
+        self.assertEqual(d["push_operand_type_totals"], {"string": 1})
+        self.assertEqual(d["invalid_push_payload_total"], 0)
+
     def test_unknown_opcode_is_unresolved(self):
         self.use_body(b"\x04\x3e", {"0x04": 1, "0x3e": 1}, 2)
         d = audit_function_cfg(self.join, self.body, self.sha)
