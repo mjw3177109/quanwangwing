@@ -68,6 +68,27 @@ class ConsumerEdgesTests(unittest.TestCase):
         result = trace_body(body, 0, [], branch)
         self.assertEqual(result['candidate_consumer_edges'][0]['operand_role'], 'condition')
 
+    def test_reject_forged_record_start_at_body_end(self):
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\x01\x00\x00'
+        branch = [{'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 11,
+                   'target_classification': 'record_start'}]
+        with self.assertRaisesRegex(ValueError, 'classification does not match'):
+            trace_body(body, 0, [], branch)
+
+    def test_reject_forged_body_end_at_record_start(self):
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\x00\x00\x00'
+        branch = [{'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 10,
+                   'target_classification': 'body_end'}]
+        with self.assertRaisesRegex(ValueError, 'classification does not match'):
+            trace_body(body, 0, [], branch)
+
+    def test_accept_verified_body_end_branch(self):
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\x01\x00\x00'
+        branch = [{'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 11,
+                   'target_classification': 'body_end'}]
+        result = trace_body(body, 0, [], branch)
+        self.assertEqual(result['candidate_consumer_edges'][0]['operand_role'], 'condition')
+
     def test_reject_missing_verified_branch(self):
         with self.assertRaisesRegex(ValueError, 'Missing or extra verified branch'):
             trace_body(b'\x9d\x02\x00\x00\x00\x00', 0, [], [])
