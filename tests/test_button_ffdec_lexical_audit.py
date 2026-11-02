@@ -45,8 +45,25 @@ class ButtonFFDecLexicalAuditTests(unittest.TestCase):
         self.assertEqual(result["lexical_unmatched_function_candidate_total"], 0)
         self.assertEqual(result["lexical_branch_keyword_totals"]["if"], 1)
         self.assertEqual(result["lexical_branch_keyword_totals"]["return"], 1)
+        self.assertEqual(result["records"][0]["lexical_branch_keyword_line_numbers"],
+                         {"if": [1], "return": [1]})
         self.assertNotIn("function act", str(result))
         self.assertFalse(result["decompiled_semantics_verified"])
+
+    def test_branch_line_locations_mask_strings_and_preserve_same_line_hits(self):
+        self.content = (b'if (x) return 1; if (y) return 2;\n'
+                        b'var s="if return"; // if return\n'
+                        b'if (z) { return 3; }\n')
+        self.script.write_bytes(self.content)
+        self.digest = hashlib.sha256(self.content).hexdigest()
+        self.crosswalk["records"][0].update(ffdec_export_sha256=self.digest,
+                                             ffdec_export_size_bytes=len(self.content))
+        self.index["files"][0].update(sha256=self.digest, size_bytes=len(self.content))
+        self.index["total_bytes"] = len(self.content)
+        row = self.audit()["records"][0]
+        self.assertEqual(row["lexical_branch_keyword_counts"]["if"], 3)
+        self.assertEqual(row["lexical_branch_keyword_line_numbers"]["if"], [1, 1, 3])
+        self.assertEqual(row["lexical_branch_keyword_line_numbers"]["return"], [1, 1, 3])
 
     def test_source_mismatch_fails_closed(self):
         self.index["source_sha256"] = "b" * 64
