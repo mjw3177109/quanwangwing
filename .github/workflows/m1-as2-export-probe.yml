@@ -204,6 +204,13 @@ jobs:
           if (d["compared_button_action_count"] != 72
                   or sum(d["classification_counts"].values()) != 72
                   or d["source_partition_rejected_count"] != d["classification_counts"]["source_partition_rejected"]
+                  or d["bytecode_declared_function_total_on_partitioned_records"] != sum(
+                      len(r["bytecode_function_body_ranges"] or []) for r in d["records"])
+                  or d["bytecode_function_body_byte_total_on_partitioned_records"] != sum(
+                      sum(f["body_byte_length"] for f in (r["bytecode_function_body_ranges"] or []))
+                      for r in d["records"])
+                  or any(r["bytecode_function_body_ranges"] is None
+                         for r in d["records"] if r["comparison_class"] != "source_partition_rejected")
                   or d["decompiled_semantics_verified"] is not False
                   or d["runtime_behavior_verified"] is not False
                   or any(r["decompiled_semantics_verified"] is not False
