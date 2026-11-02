@@ -38,6 +38,9 @@ jobs:
       - name: Test FFDec button lexical audit parser
         run: python3 -m unittest discover -s tests -p 'test_button_ffdec_lexical_audit.py' -v
 
+      - name: Test original bytecode versus FFDec lexical join
+        run: python3 -m unittest discover -s tests -p 'test_button_bytecode_lexical_join.py' -v
+
       - name: Export ActionScript with bounded retry for partial FFDec output
         run: |
           for attempt in 1 2 3; do
@@ -184,6 +187,28 @@ jobs:
                   or d["decompiled_semantics_verified"] is not False
                   or d["runtime_behavior_verified"] is not False):
               raise SystemExit("Restricted FFDec button lexical audit regression")
+          PY
+
+      - name: Compare original ActionRecord function declarations to FFDec lexical candidates
+        run: |
+          python3 tools/build_button_bytecode_lexical_join.py \
+            --swf 拳皇wing1.4.swf \
+            --buttons build/as2-probe/button-action-evidence.json \
+            --crosswalk build/as2-probe/button-ffdec-export-crosswalk.json \
+            --lexical build/as2-probe/button-ffdec-lexical-audit.json \
+            --output build/as2-probe/button-bytecode-lexical-join.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("build/as2-probe/button-bytecode-lexical-join.json").read_text(encoding="utf-8"))
+          if (d["compared_button_action_count"] != 72
+                  or sum(d["classification_counts"].values()) != 72
+                  or d["source_partition_rejected_count"] != d["classification_counts"]["source_partition_rejected"]
+                  or d["decompiled_semantics_verified"] is not False
+                  or d["runtime_behavior_verified"] is not False
+                  or any(r["decompiled_semantics_verified"] is not False
+                         or r["runtime_behavior_verified"] is not False for r in d["records"])):
+              raise SystemExit("Original bytecode / FFDec lexical evidence join regression")
           PY
 
       - name: Build SWF ExportAssets candidate index
@@ -689,6 +714,7 @@ jobs:
             build/as2-probe/script-export-index.json
             build/as2-probe/button-ffdec-export-crosswalk.json
             build/as2-probe/button-ffdec-lexical-audit.json
+            build/as2-probe/button-bytecode-lexical-join.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-zero-frame-init-join.json

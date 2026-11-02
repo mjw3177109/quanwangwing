@@ -1,0 +1,114 @@
+import copy
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+from build_button_bytecode_lexical_join import join_button_bytecode_lexical
+
+
+class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
+    def setUp(self):
+        self.sha = "a" * 64
+        self.payload = b"\x9b\x06\x00f\x00\x00\x00\x02\x00\x04\x00\x00"
+        self.data = b"\x00" * 24 + self.payload
+        self.buttons = {"source_sha256": self.sha, "embedded_action_record_count": 1,
+                        "buttons": [{"character_id": 693, "embedded_action_record_count": 1,
+                                     "embedded_action_records": [{"offset_uncompressed": 20,
+                                          "condition_flags": 8, "action_bytes_including_terminator": len(self.payload),
+                                          "ends_with_action_end": True}]}]}
+        self.lexical = {"source_sha256": self.sha, "audited_button_action_count": 1,
+                        "lexical_function_candidate_total": 0,
+                        "decompiled_semantics_verified": False, "runtime_behavior_verified": False,
+                        "records": [{"button_character_id": 693, "action_offset_uncompressed": 20,
+                                     "ffdec_export_path": "scripts/a.as", "ffdec_export_sha256": "b"*64,
+                                     "lexical_function_candidate_count": 0,
+                                     "lexical_matched_function_scope_count": 0,
+                                     "lexical_unmatched_function_candidate_count": 0,
+                                     "decompiled_semantics_verified": False, "runtime_behavior_verified": False}]}
+        self.crosswalk = {"source_sha256": self.sha, "matched_export_count": 1,
+                          "source_action_record_count": 1,
+                          "decompiled_semantics_verified": False, "runtime_behavior_verified": False,
+                          "records": [{"button_character_id": 693, "action_offset_uncompressed": 20,
+                                       "condition_flags": 8, "source_action_byte_length": len(self.payload),
+                                       "ffdec_export_path": "scripts/a.as", "ffdec_export_sha256": "b"*64,
+                                       "decompiled_semantics_verified": False, "runtime_behavior_verified": False}]}
+
+    def run_join(self):
+        return join_button_bytecode_lexical(self.buttons, self.lexical, self.crosswalk, self.data, self.sha)
+
+    def test_bytecode_only_source_candidate(self):
+        result = self.run_join()
+        self.assertEqual(result["bytecode_declared_function_total_on_partitioned_records"], 1)
+        self.assertEqual(result["classification_counts"]["bytecode_only_candidate"], 1)
+        self.assertFalse(result["decompiled_semantics_verified"])
+        self.assertNotIn("function f", str(result))
+
+    def test_both_present_not_semantics_verified(self):
+        self.lexical["records"][0]["lexical_function_candidate_count"] = 1
+        self.lexical["records"][0]["lexical_matched_function_scope_count"] = 1
+        self.lexical["lexical_function_candidate_total"] = 1
+        self.assertEqual(self.run_join()["classification_counts"]["both_present_unverified"], 1)
+
+    def test_lexical_only_candidate(self):
+        self.payload = b"\x04\x00"
+        self.data = b"\x00" * 24 + self.payload
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = 2
+        self.crosswalk["records"][0]["source_action_byte_length"] = 2
+        self.lexical["records"][0]["lexical_function_candidate_count"] = 1
+        self.lexical["records"][0]["lexical_matched_function_scope_count"] = 1
+        self.lexical["lexical_function_candidate_total"] = 1
+        self.assertEqual(self.run_join()["classification_counts"]["lexical_only_candidate"], 1)
+
+    def test_malformed_bytecode_is_explicitly_rejected(self):
+        self.payload = b"\x9b\xff\xff\x00"
+        self.data = b"\x00" * 24 + self.payload
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
+        self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
+        self.assertEqual(self.run_join()["classification_counts"]["source_partition_rejected"], 1)
+
+    def test_source_sha_mismatch(self):
+        self.crosswalk["source_sha256"] = "c"*64
+        with self.assertRaisesRegex(ValueError, "source SHA"):
+            self.run_join()
+
+    def test_missing_source_record(self):
+        self.lexical["records"][0]["action_offset_uncompressed"] = 22
+        with self.assertRaisesRegex(ValueError, "Missing or extra"):
+            self.run_join()
+
+    def test_duplicate_source_key(self):
+        self.lexical["records"].append(copy.deepcopy(self.lexical["records"][0]))
+        self.lexical["audited_button_action_count"] = 2
+        with self.assertRaisesRegex(ValueError, "Duplicate lexical"):
+            self.run_join()
+
+    def test_flags_mismatch(self):
+        self.crosswalk["records"][0]["condition_flags"] = 1
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            self.run_join()
+
+    def test_byte_bounds(self):
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] += 100
+        self.crosswalk["records"][0]["source_action_byte_length"] += 100
+        with self.assertRaisesRegex(ValueError, "outside"):
+            self.run_join()
+
+    def test_false_runtime_claim(self):
+        self.lexical["records"][0]["runtime_behavior_verified"] = True
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            self.run_join()
+
+    def test_lexical_total_mismatch(self):
+        self.lexical["lexical_function_candidate_total"] = 2
+        with self.assertRaisesRegex(ValueError, "total mismatch"):
+            self.run_join()
+
+    def test_action_end_mismatch(self):
+        self.buttons["buttons"][0]["embedded_action_records"][0]["ends_with_action_end"] = False
+        with self.assertRaisesRegex(ValueError, "ActionEnd"):
+            self.run_join()
+
+
+if __name__ == "__main__":
+    unittest.main()
