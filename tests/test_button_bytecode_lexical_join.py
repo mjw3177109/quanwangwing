@@ -64,7 +64,7 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
 
     def test_definefunction2_source_backed_range(self):
         # 9-byte DefineFunction2 header, 1-byte body, then top-level End.
-        self._set_payload(b"\\x8e\\x09\\x00f\\x00\\x00\\x00\\x00\\x00\\x00\\x01\\x00\\x04\\x00")
+        self._set_payload(b"\x8e\x09\x00f\x00\x00\x00\x00\x00\x00\x01\x00\x04\x00")
         self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
         self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
         result = self.run_join()
@@ -78,7 +78,7 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
         self.assertEqual(result["bytecode_function_body_byte_total_on_partitioned_records"], 1)
 
     def test_rejected_partition_has_no_verified_function_ranges(self):
-        self._set_payload(b"\\x9b\\xff\\xff\\x00")
+        self._set_payload(b"\x9b\xff\xff\x00")
         self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
         self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
         result = self.run_join()
