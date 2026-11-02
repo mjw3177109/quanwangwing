@@ -95,6 +95,18 @@ def join_button_bytecode_lexical(buttons: dict, lexical: dict, crosswalk: dict,
         length = _count(event.get("action_bytes_including_terminator"), "action length")
         if length == 0 or offset + 4 + length > len(decompressed):
             raise ValueError("Button action payload outside decompressed SWF")
+        # CondActionSize and CondFlags are two little-endian words immediately
+        # before the ActionRecord bytes. Re-read the original bytes rather than
+        # trusting two mutually consistent, potentially forged metadata reports.
+        raw_size = int.from_bytes(decompressed[offset:offset + 2], "little")
+        raw_flags = int.from_bytes(decompressed[offset + 2:offset + 4], "little")
+        if raw_flags != event.get("condition_flags"):
+            raise ValueError("ButtonCondAction raw header condition flags mismatch")
+        final_by_zero = event.get("is_last_by_zero_size")
+        if type(final_by_zero) is not bool or final_by_zero != (raw_size == 0):
+            raise ValueError("ButtonCondAction final-record marker mismatch")
+        if raw_size != 0 and raw_size != length + 4:
+            raise ValueError("ButtonCondAction CondActionSize/action length mismatch")
         payload = decompressed[offset + 4:offset + 4 + length]
         if event.get("ends_with_action_end") is not (payload[-1] == 0):
             raise ValueError("Button ActionEnd provenance mismatch")
