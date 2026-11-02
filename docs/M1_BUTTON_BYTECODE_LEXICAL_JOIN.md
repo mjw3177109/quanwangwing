@@ -29,3 +29,11 @@ CI 仅上传 JSON 元数据，绝不上传原始 SWF、FFDec 导出的 AS2 正�
 对结构分层成功的 ButtonCondAction，新增 `bytecode_function_body_ranges`：仅包含 DefineFunction/DefineFunction2 的 opcode 类别、声明的解压后 SWF 绝对偏移、函数体的半开区间 `[body_start_uncompressed, body_end_uncompressed)` 和字节长度。偏移计算为原始动作容器头部位置 + 4 字节 + 分层解析器返回的相对位置。新增全局 `bytecode_function_body_byte_total_on_partitioned_records`，在 CI 中与逐条函数体长度闭合核验。
 
 若某条动作流的结构分层失败，该记录的范围为 `null`（未验证），不能当成空函数表；合法无函数的动作流则为 `[]`。此数据用于在**受限环境**准确定位按钮 693、701、715 的原始函数体，再与 FFDec 输出交叉审查。只输出偏移、长度、opcode 类别，不输出函数名、ActionRecord 正文或素材；不会解析函数体指令、验证反编译语义或推断运行时可达性。源字节、原版导出仍不得公开。
+
+## 函数体 ActionRecord 结构清点（不解析操作数）
+
+在已通过原始 SWF 来源校验、且外层 ButtonCondAction 成功结构分层的函数体半开区间内，进一步运行仓库已有的 `partition_top_level_actions`。逐函数只记录 `body_partition_status`（`partitioned` / `rejected`）、顶层 ActionRecord 数量、opcode 十六进制直方图、首个 ActionEnd 的原始解压后偏移及其后的**语法记录**数量。全局记录 `bytecode_function_body_partition_status_counts`、`bytecode_function_body_record_total` 和 `bytecode_function_body_opcode_histogram`，CI 验证统计闭合。
+
+`rejected` 表示函数体含不支持的 With/Try 嵌套结构或损坏/不完整的 ActionRecord；此时函数体 opcode 直方图及记录数必须为 `null`，不能将其视为零条指令。外层解析失败时仍保留 `bytecode_function_body_ranges=null`，区别于成功解析但没有函数的 `[]`。
+
+该清点只解析**记录边界和 opcode 类别**，不读取/发布函数名、操作数、代码正文或原版素材。即使某条记录位于 ActionEnd 之后，也不据此断言 Flash VM 执行过它。结构成功不等于 FFDec 反编译语义等价，也不代表角色、招式、碰撞判定或 1:1 复刻已经完成。

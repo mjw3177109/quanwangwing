@@ -58,9 +58,69 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
             "body_start_uncompressed": 33,
             "body_end_uncompressed": 35,
             "body_byte_length": 2,
+            "body_partition_status": "partitioned",
+            "body_top_level_record_count": 2,
+            "body_opcode_histogram": {"0x00": 1, "0x04": 1},
+            "body_first_action_end_offset_uncompressed": 34,
+            "body_post_end_record_count": 0,
         }])
         self.assertEqual(result["bytecode_function_body_byte_total_on_partitioned_records"], 2)
         self.assertFalse(result["runtime_behavior_verified"])
+
+    def test_function_body_opcode_histogram_is_source_scoped(self):
+        result = self.run_join()
+        body = result["records"][0]["bytecode_function_body_ranges"][0]
+        self.assertEqual(body["body_partition_status"], "partitioned")
+        self.assertEqual(body["body_opcode_histogram"], {"0x00": 1, "0x04": 1})
+        self.assertEqual(body["body_top_level_record_count"], 2)
+        self.assertEqual(body["body_first_action_end_offset_uncompressed"], 34)
+        self.assertEqual(body["body_post_end_record_count"], 0)
+        self.assertEqual(result["bytecode_function_body_record_total"], 2)
+        self.assertEqual(result["bytecode_function_body_partition_status_counts"],
+                         {"partitioned": 1, "rejected": 0})
+
+    def test_malformed_nested_function_body_is_explicitly_rejected(self):
+        # Parent header is valid; the declared 1-byte body has a truncated
+        # extended opcode, so no function-body opcode claim may be made.
+        self._set_payload(b"\x9b\x06\x00f\x00\x00\x00\x01\x00\x9b\x00")
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
+        self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
+        result = self.run_join()
+        body = result["records"][0]["bytecode_function_body_ranges"][0]
+        self.assertEqual(body["body_partition_status"], "rejected")
+        self.assertIsNone(body["body_opcode_histogram"])
+        self.assertIsNone(body["body_top_level_record_count"])
+        self.assertEqual(result["bytecode_function_body_partition_status_counts"]["rejected"], 1)
+        self.assertEqual(result["bytecode_function_body_record_total"], 0)
+        self.assertEqual(result["source_partition_rejected_count"], 0)
+
+    def test_post_end_body_records_are_only_syntactic(self):
+        self._set_payload(b"\x9b\x06\x00f\x00\x00\x00\x02\x00\x00\x04\x00")
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
+        self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
+        result = self.run_join()
+        body = result["records"][0]["bytecode_function_body_ranges"][0]
+        self.assertEqual(body["body_first_action_end_offset_uncompressed"], 33)
+        self.assertEqual(body["body_post_end_record_count"], 1)
+        self.assertFalse(result["runtime_behavior_verified"])
+
+    def test_no_function_body_has_empty_aggregate(self):
+        self._set_payload(b"\x04\x00")
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
+        self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
+        result = self.run_join()
+        self.assertEqual(result["records"][0]["bytecode_function_body_ranges"], [])
+        self.assertEqual(result["bytecode_function_body_partition_status_counts"],
+                         {"partitioned": 0, "rejected": 0})
+        self.assertEqual(result["bytecode_function_body_opcode_histogram"], {})
+
+    def test_with_scope_in_function_body_is_not_silently_accepted(self):
+        self._set_payload(b"\x9b\x06\x00f\x00\x00\x00\x03\x00\x94\x00\x00\x00")
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
+        self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
+        body = self.run_join()["records"][0]["bytecode_function_body_ranges"][0]
+        self.assertEqual(body["body_partition_status"], "rejected")
+        self.assertIsNone(body["body_first_action_end_offset_uncompressed"])
 
     def test_definefunction2_source_backed_range(self):
         # 9-byte DefineFunction2 header, 1-byte body, then top-level End.
@@ -74,6 +134,11 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
             "body_start_uncompressed": 36,
             "body_end_uncompressed": 37,
             "body_byte_length": 1,
+            "body_partition_status": "partitioned",
+            "body_top_level_record_count": 1,
+            "body_opcode_histogram": {"0x04": 1},
+            "body_first_action_end_offset_uncompressed": None,
+            "body_post_end_record_count": 0,
         }])
         self.assertEqual(result["bytecode_function_body_byte_total_on_partitioned_records"], 1)
 

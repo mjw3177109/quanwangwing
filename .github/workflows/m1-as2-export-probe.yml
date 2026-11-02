@@ -211,6 +211,19 @@ jobs:
                       for r in d["records"])
                   or any(r["bytecode_function_body_ranges"] is None
                          for r in d["records"] if r["comparison_class"] != "source_partition_rejected")
+                  or set(d["bytecode_function_body_partition_status_counts"]) != {"partitioned", "rejected"}
+                  or sum(d["bytecode_function_body_partition_status_counts"].values())
+                     != d["bytecode_declared_function_total_on_partitioned_records"]
+                  or sum(d["bytecode_function_body_opcode_histogram"].values())
+                     != d["bytecode_function_body_record_total"]
+                  or d["bytecode_function_body_record_total"] != sum(
+                      f["body_top_level_record_count"] or 0
+                      for r in d["records"] for f in (r["bytecode_function_body_ranges"] or []))
+                  or any(f["body_partition_status"] not in ("partitioned", "rejected")
+                         or (f["body_partition_status"] == "rejected" and
+                             (f["body_opcode_histogram"] is not None or
+                              f["body_top_level_record_count"] is not None))
+                         for r in d["records"] for f in (r["bytecode_function_body_ranges"] or []))
                   or d["decompiled_semantics_verified"] is not False
                   or d["runtime_behavior_verified"] is not False
                   or any(r["decompiled_semantics_verified"] is not False
