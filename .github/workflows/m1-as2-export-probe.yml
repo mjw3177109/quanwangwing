@@ -35,6 +35,9 @@ jobs:
       - name: Test FFDec button export crosswalk parser
         run: python3 -m unittest discover -s tests -p 'test_button_ffdec_export_crosswalk.py' -v
 
+      - name: Test FFDec button lexical audit parser
+        run: python3 -m unittest discover -s tests -p 'test_button_ffdec_lexical_audit.py' -v
+
       - name: Export ActionScript with bounded retry for partial FFDec output
         run: |
           for attempt in 1 2 3; do
@@ -158,6 +161,29 @@ jobs:
                          or r["runtime_behavior_verified"] is not False
                          for r in d["records"])):
               raise SystemExit("Original SWF / FFDec button export crosswalk regression")
+          PY
+
+      - name: Audit restricted FFDec button lexical function and branch candidates
+        run: |
+          python3 tools/build_button_ffdec_lexical_audit.py \
+            --scripts build/as2-probe/exports/scripts \
+            --crosswalk build/as2-probe/button-ffdec-export-crosswalk.json \
+            --export-index build/as2-probe/script-export-index.json \
+            --output build/as2-probe/button-ffdec-lexical-audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("build/as2-probe/button-ffdec-lexical-audit.json").read_text(encoding="utf-8"))
+          rows = d["records"]
+          if (d["audited_button_action_count"] != 72
+                  or len(rows) != 72
+                  or d["priority_review_count"] != 3
+                  or {r["button_character_id"] for r in rows if r["priority_graph_difference_review"]} != {693, 701, 715}
+                  or d["lexical_function_candidate_total"] != d["lexical_matched_function_scope_total"] + d["lexical_unmatched_function_candidate_total"]
+                  or any(r["decompiled_semantics_verified"] is not False or r["runtime_behavior_verified"] is not False for r in rows)
+                  or d["decompiled_semantics_verified"] is not False
+                  or d["runtime_behavior_verified"] is not False):
+              raise SystemExit("Restricted FFDec button lexical audit regression")
           PY
 
       - name: Build SWF ExportAssets candidate index
@@ -662,6 +688,7 @@ jobs:
             build/as2-probe/summary.json
             build/as2-probe/script-export-index.json
             build/as2-probe/button-ffdec-export-crosswalk.json
+            build/as2-probe/button-ffdec-lexical-audit.json
             build/as2-probe/as2-semantic-index.json
             build/as2-probe/zero-frame-as2-class-links.json
             build/as2-probe/role-zero-frame-init-join.json
