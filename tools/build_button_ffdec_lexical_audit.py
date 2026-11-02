@@ -103,6 +103,17 @@ def audit_button_lexical_exports(scripts_root: Path, crosswalk: dict,
                    for match in branch_matches if match.group() == word]
             for word in ("if", "return")
         }
+        # Use token offsets: a keyword sharing a line with a function need not
+        # be inside its body. These are lexical, not runtime, scope candidates.
+        scope_hits = {}
+        for word in ("if", "return"):
+            hits = [m for m in branch_matches if m.group() == word]
+            inside = sum(any(s["body_start"] < m.start() and m.end() <= s["body_end"]
+                             for s in scopes) for m in hits)
+            scope_hits[word] = {
+                "inside_recognized_function": inside,
+                "outside_recognized_function": len(hits) - inside,
+            }
         branch_totals.update(words)
         scopes_total += len(scopes)
         unmatched_total += unmatched
@@ -119,6 +130,7 @@ def audit_button_lexical_exports(scripts_root: Path, crosswalk: dict,
             "lexical_scope_line_ranges": sorted([[s["start_line"], s["end_line"]] for s in scopes]),
             "lexical_branch_keyword_counts": {w: words[w] for w in BRANCH_WORDS},
             "lexical_branch_keyword_line_numbers": line_hits,
+            "lexical_branch_keyword_scope_counts": scope_hits,
             "decompiled_semantics_verified": False,
             "runtime_behavior_verified": False,
         })
@@ -139,6 +151,7 @@ def audit_button_lexical_exports(scripts_root: Path, crosswalk: dict,
         "limitations": [
             "Lexical AS2 tokens and brace scopes are heuristic; no bytecode equivalence or VM execution is established.",
             "Comments and quoted strings are masked; regex literals and malformed FFDec output can mislead scanning.",
+            "Function-body keyword attribution uses lexical brace ranges, not verified function execution.",
             "Priority IDs come from prior graph-count differences, not proven game behavior.",
             "Only hashes, paths, line numbers, ranges and counts are emitted; original scripts stay on the runner.",
         ],
