@@ -106,6 +106,17 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
                     or len(lines) != count or any(type(n) is not int or n < 1 for n in lines)
                     or lines != sorted(lines)):
                 raise ValueError("FFDec branch line/count mismatch")
+        # Require exact lexical inside/outside accounting for both keywords.
+        scope_counts = lex.get("lexical_branch_keyword_scope_counts")
+        if type(scope_counts) is not dict or set(scope_counts) != {"if", "return"}:
+            raise ValueError("Missing FFDec branch scope evidence")
+        for word in ("if", "return"):
+            counts = scope_counts[word]
+            if (type(counts) is not dict
+                    or set(counts) != {"inside_recognized_function", "outside_recognized_function"}
+                    or any(type(n) is not int or n < 0 for n in counts.values())
+                    or sum(counts.values()) != word_counts[word]):
+                raise ValueError("FFDec branch scope/count mismatch")
         # Crosswalk event lengths were checked against the original SWF bytes.
         event_length = exp.get("source_action_byte_length")
         if type(event_length) is not int or event_length <= 0:
@@ -154,6 +165,8 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
             "ffdec_event_lexical_return_keyword_count": lex["lexical_branch_keyword_counts"].get("return", 0),
             "ffdec_event_lexical_if_line_numbers": line_hits["if"],
             "ffdec_event_lexical_return_line_numbers": line_hits["return"],
+            "ffdec_event_lexical_if_scope_counts": scope_counts["if"],
+            "ffdec_event_lexical_return_scope_counts": scope_counts["return"],
             "operand_origin_statuses": sorted({x["origin_status"] for x in body_rows}),
             "operand_origins_complete": complete,
             "source_if_operand_origin_types": sorted({
@@ -178,6 +191,7 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
         "records": queue,
         "limitations": [
             "FFDec lexical keyword counts and line numbers cover the whole button event, not the nested function.",
+            "Lexical function-body attribution is heuristic and cannot establish source-to-bytecode equivalence.",
             "Lexical mismatch is a review candidate, not proof of a decompiler defect.",
             "No source operands, ActionScript body, images, sound or gameplay values are emitted.",
         ],
