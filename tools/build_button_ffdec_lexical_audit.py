@@ -6,6 +6,7 @@ Counts are not ActionScript/bytecode equivalence or Flash runtime evidence.
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 from collections import Counter
 import hashlib
 import json
@@ -92,7 +93,16 @@ def audit_button_lexical_exports(scripts_root: Path, crosswalk: dict,
         unmatched = candidates - len(scopes)
         if unmatched < 0:
             raise ValueError("Function candidate accounting mismatch")
-        words = Counter(m.group() for m in BRANCH_RE.finditer(masked))
+        branch_matches = list(BRANCH_RE.finditer(masked))
+        words = Counter(m.group() for m in branch_matches)
+        # Stable, one-based FFDec source line locators; retain repeated hits on a line.
+        # Only line numbers leave the restricted runner, never AS2 source text.
+        newlines = [i for i, char in enumerate(masked) if char == "\n"]
+        line_hits = {
+            word: [bisect_right(newlines, match.start() - 1) + 1
+                   for match in branch_matches if match.group() == word]
+            for word in ("if", "return")
+        }
         branch_totals.update(words)
         scopes_total += len(scopes)
         unmatched_total += unmatched
@@ -108,6 +118,7 @@ def audit_button_lexical_exports(scripts_root: Path, crosswalk: dict,
             "lexical_scope_kind_counts": dict(sorted(Counter(s["kind"] for s in scopes).items())),
             "lexical_scope_line_ranges": sorted([[s["start_line"], s["end_line"]] for s in scopes]),
             "lexical_branch_keyword_counts": {w: words[w] for w in BRANCH_WORDS},
+            "lexical_branch_keyword_line_numbers": line_hits,
             "decompiled_semantics_verified": False,
             "runtime_behavior_verified": False,
         })
@@ -129,7 +140,7 @@ def audit_button_lexical_exports(scripts_root: Path, crosswalk: dict,
             "Lexical AS2 tokens and brace scopes are heuristic; no bytecode equivalence or VM execution is established.",
             "Comments and quoted strings are masked; regex literals and malformed FFDec output can mislead scanning.",
             "Priority IDs come from prior graph-count differences, not proven game behavior.",
-            "Only hashes, paths, line ranges and counts are emitted; original scripts stay on the runner.",
+            "Only hashes, paths, line numbers, ranges and counts are emitted; original scripts stay on the runner.",
         ],
     }
 
