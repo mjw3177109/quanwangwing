@@ -10,13 +10,13 @@ from build_button_bytecode_lexical_join import join_button_bytecode_lexical
 class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
     def setUp(self):
         self.sha = "a" * 64
-        self.payload = b"\x9b\x06\x00f\x00\x00\x00\x02\x00\x04\x00\x00"
-        self.data = b"\x00" * 24 + self.payload
+        self._set_payload(b"\x9b\x06\x00f\x00\x00\x00\x02\x00\x04\x00\x00")
         self.buttons = {"source_sha256": self.sha, "embedded_action_record_count": 1,
                         "buttons": [{"character_id": 693, "embedded_action_record_count": 1,
                                      "embedded_action_records": [{"offset_uncompressed": 20,
                                           "condition_flags": 8, "action_bytes_including_terminator": len(self.payload),
-                                          "ends_with_action_end": True}]}]}
+                                          "ends_with_action_end": True,
+                                          "is_last_by_zero_size": True}]}]}
         self.lexical = {"source_sha256": self.sha, "audited_button_action_count": 1,
                         "lexical_function_candidate_total": 0,
                         "decompiled_semantics_verified": False, "runtime_behavior_verified": False,
@@ -33,6 +33,11 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
                                        "condition_flags": 8, "source_action_byte_length": len(self.payload),
                                        "ffdec_export_path": "scripts/a.as", "ffdec_export_sha256": "b"*64,
                                        "decompiled_semantics_verified": False, "runtime_behavior_verified": False}]}
+
+    def _set_payload(self, payload):
+        self.payload = payload
+        # Four raw ButtonCondAction header bytes: zero final size, flags=8.
+        self.data = b"\x00" * 20 + b"\x00\x00\x08\x00" + payload
 
     def run_join(self):
         return join_button_bytecode_lexical(self.buttons, self.lexical, self.crosswalk, self.data, self.sha)
@@ -51,8 +56,7 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
         self.assertEqual(self.run_join()["classification_counts"]["both_present_unverified"], 1)
 
     def test_lexical_only_candidate(self):
-        self.payload = b"\x04\x00"
-        self.data = b"\x00" * 24 + self.payload
+        self._set_payload(b"\x04\x00")
         self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = 2
         self.crosswalk["records"][0]["source_action_byte_length"] = 2
         self.lexical["records"][0]["lexical_function_candidate_count"] = 1
@@ -61,11 +65,33 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
         self.assertEqual(self.run_join()["classification_counts"]["lexical_only_candidate"], 1)
 
     def test_malformed_bytecode_is_explicitly_rejected(self):
-        self.payload = b"\x9b\xff\xff\x00"
-        self.data = b"\x00" * 24 + self.payload
+        self._set_payload(b"\x9b\xff\xff\x00")
         self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
         self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
         self.assertEqual(self.run_join()["classification_counts"]["source_partition_rejected"], 1)
+
+    def test_raw_flags_checked_even_if_metadata_reports_agree(self):
+        self.buttons["buttons"][0]["embedded_action_records"][0]["condition_flags"] = 9
+        self.crosswalk["records"][0]["condition_flags"] = 9
+        with self.assertRaisesRegex(ValueError, "raw header"):
+            self.run_join()
+
+    def test_explicit_condaction_size_must_match_length(self):
+        self.data = self.data[:20] + b"\x05\x00" + self.data[22:]
+        self.buttons["buttons"][0]["embedded_action_records"][0]["is_last_by_zero_size"] = False
+        with self.assertRaisesRegex(ValueError, "CondActionSize"):
+            self.run_join()
+
+    def test_final_record_flag_checked_against_source_bytes(self):
+        self.buttons["buttons"][0]["embedded_action_records"][0]["is_last_by_zero_size"] = False
+        with self.assertRaisesRegex(ValueError, "final-record"):
+            self.run_join()
+
+    def test_valid_explicit_size_record(self):
+        size = (len(self.payload) + 4).to_bytes(2, "little")
+        self.data = self.data[:20] + size + self.data[22:]
+        self.buttons["buttons"][0]["embedded_action_records"][0]["is_last_by_zero_size"] = False
+        self.assertEqual(self.run_join()["classification_counts"]["bytecode_only_candidate"], 1)
 
     def test_source_sha_mismatch(self):
         self.crosswalk["source_sha256"] = "c"*64
