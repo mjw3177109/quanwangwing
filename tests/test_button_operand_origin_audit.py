@@ -97,10 +97,30 @@ class ButtonOperandOriginAuditTests(unittest.TestCase):
         self.assertNotIn("alpha", json.dumps(report))
         self.assertFalse(report["runtime_behavior_verified"])
 
+    def test_string_locations_include_non_string_element_indices(self):
+        body = b"\x96\x08\x00\x05\x01\x00x\x00\x00y\x00\x00"
+        row = self.run_body(body)["records"][0]
+        self.assertEqual(row["literal_string_equivalence_classes_in_push_order"], ["S1", "S2"])
+        self.assertEqual(row["literal_string_locations"], [
+            {"push_record_offset_uncompressed": 0, "push_element_index": 1, "class_label": "S1"},
+            {"push_record_offset_uncompressed": 0, "push_element_index": 2, "class_label": "S2"},
+        ])
+        self.assertNotIn('"x"', json.dumps(row))
+        self.assertNotIn('"y"', json.dumps(row))
+
+    def test_string_locations_identify_distinct_push_record_offsets(self):
+        body = b"\x96\x03\x00\x00x\x00\x96\x03\x00\x00x\x00\x00"
+        row = self.run_body(body)["records"][0]
+        self.assertEqual(row["literal_string_locations"], [
+            {"push_record_offset_uncompressed": 0, "push_element_index": 0, "class_label": "S1"},
+            {"push_record_offset_uncompressed": 6, "push_element_index": 0, "class_label": "S1"},
+        ])
+
     def test_unresolved_source_withholds_literal_equality(self):
         report = self.run_body(b"\x00", source_status="source_cfg_unresolved")
         self.assertIsNone(report["records"][0]["literal_string_count"])
         self.assertIsNone(report["records"][0]["literal_string_equivalence_classes_in_push_order"])
+        self.assertIsNone(report["records"][0]["literal_string_locations"])
         self.assertEqual(report["literal_string_occurrence_count"], 0)
 
     def test_literal_string_parser_rejects_unterminated_source(self):

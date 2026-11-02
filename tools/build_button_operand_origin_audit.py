@@ -36,10 +36,11 @@ def _push_origins(payload: bytes) -> tuple[str, ...]:
     return tuple(origins)
 
 
-def _push_string_values(payload: bytes) -> tuple[bytes, ...]:
-    """Private raw-byte equality keys for ActionPush strings; never serialize values."""
-    values = []
+def _push_string_locations(payload: bytes) -> tuple[tuple[int, bytes], ...]:
+    """Private string element indices and raw equality keys; values never serialized."""
+    locations = []
     pos = 0
+    element_index = 0
     while pos < len(payload):
         kind = payload[pos]
         pos += 1
@@ -47,14 +48,20 @@ def _push_string_values(payload: bytes) -> tuple[bytes, ...]:
             end = payload.find(b"\x00", pos)
             if end < 0:
                 raise ValueError("Unterminated ActionPush string")
-            values.append(payload[pos:end])
+            locations.append((element_index, payload[pos:end]))
             pos = end + 1
         else:
             width = PUSH_WIDTHS.get(kind)
             if width is None or pos + width > len(payload):
                 raise ValueError("Invalid ActionPush element boundary")
             pos += width
-    return tuple(values)
+        element_index += 1
+    return tuple(locations)
+
+
+def _push_string_values(payload: bytes) -> tuple[bytes, ...]:
+    """Private raw-byte equality keys for ActionPush strings; never serialize values."""
+    return tuple(raw for _, raw in _push_string_locations(payload))
 
 
 def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
@@ -102,6 +109,7 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
                 "if_operand_origin_counts": None,
                 "variable_name_operand_origin_counts": None,
                 "literal_string_equivalence_classes_in_push_order": None,
+                "literal_string_locations": None,
                 "literal_string_count": None,
                 "runtime_behavior_verified": False,
             }
@@ -186,16 +194,23 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
                 # Compare only exact ActionPush string bytes across source-backed
                 # function bodies. This does NOT resolve variable bindings.
                 sequence = []
+                locations = []
                 for action in records:
                     if action.opcode != 0x96:
                         continue
-                    for raw in _push_string_values(body[action.start + 3:action.end]):
+                    for element_index, raw in _push_string_locations(body[action.start + 3:action.end]):
                         if raw not in literal_classes:
                             literal_classes[raw] = f"S{len(literal_classes) + 1}"
                         label = literal_classes[raw]
                         sequence.append(label)
+                        locations.append({
+                            "push_record_offset_uncompressed": start + action.start,
+                            "push_element_index": element_index,
+                            "class_label": label,
+                        })
                         literal_counts[label] += 1
                 result["literal_string_equivalence_classes_in_push_order"] = sequence
+                result["literal_string_locations"] = locations
                 result["literal_string_count"] = len(sequence)
             result.update({
                 "origin_status": status,
@@ -225,7 +240,7 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
         "records": output,
         "limitations": [
             "Origin categories describe possible stack producers, not operand values or variable names.",
-            "S-number equality labels are report-local ActionPush string-byte classes, not values or variable bindings.",
+            "S-number equality labels and source locations are static ActionPush evidence, not values or variable bindings.",
             "No ActionPush literal text, bytes or content hashes are serialized.",
             "Both conditional edges are considered; some candidate paths may be infeasible.",
             "The function entry stack is assumed empty; no Flash VM execution is observed.",
