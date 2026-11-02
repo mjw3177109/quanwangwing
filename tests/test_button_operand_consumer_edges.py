@@ -46,6 +46,28 @@ class ConsumerEdgesTests(unittest.TestCase):
         name = next(x for x in r['candidate_consumer_edges'] if x['operand_role'] == 'variable_name')
         self.assertEqual(name['producer_element_index'], 1)
 
+    def test_reject_forged_in_bounds_branch_target(self):
+        # Source ActionIf displacement is zero (target 10), not the reported 11.
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\x00\x00\x00'
+        branch = [{'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 11,
+                   'target_classification': 'body_end'}]
+        with self.assertRaisesRegex(ValueError, 'does not match source'):
+            trace_body(body, 0, [], branch)
+
+    def test_reject_nonstandard_actionif_payload_length(self):
+        body = b'\x96\x02\x00\x05\x01\x9d\x03\x00\x00\x00\x00\x00'
+        branch = [{'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 11,
+                   'target_classification': 'record_start'}]
+        with self.assertRaisesRegex(ValueError, 'payload length'):
+            trace_body(body, 0, [], branch)
+
+    def test_signed_backward_branch_is_verified(self):
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\xf6\xff\x00'
+        branch = [{'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 0,
+                   'target_classification': 'record_start'}]
+        result = trace_body(body, 0, [], branch)
+        self.assertEqual(result['candidate_consumer_edges'][0]['operand_role'], 'condition')
+
     def test_reject_missing_verified_branch(self):
         with self.assertRaisesRegex(ValueError, 'Missing or extra verified branch'):
             trace_body(b'\x9d\x02\x00\x00\x00\x00', 0, [], [])
