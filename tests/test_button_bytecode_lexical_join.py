@@ -49,6 +49,43 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
         self.assertFalse(result["decompiled_semantics_verified"])
         self.assertNotIn("function f", str(result))
 
+    def test_source_backed_function_body_range_is_half_open(self):
+        result = self.run_join()
+        ranges = result["records"][0]["bytecode_function_body_ranges"]
+        self.assertEqual(ranges, [{
+            "opcode": "DefineFunction",
+            "declaration_offset_uncompressed": 24,
+            "body_start_uncompressed": 33,
+            "body_end_uncompressed": 35,
+            "body_byte_length": 2,
+        }])
+        self.assertEqual(result["bytecode_function_body_byte_total_on_partitioned_records"], 2)
+        self.assertFalse(result["runtime_behavior_verified"])
+
+    def test_definefunction2_source_backed_range(self):
+        # 9-byte DefineFunction2 header, 1-byte body, then top-level End.
+        self._set_payload(b"\\x8e\\x09\\x00f\\x00\\x00\\x00\\x00\\x00\\x00\\x01\\x00\\x04\\x00")
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
+        self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
+        result = self.run_join()
+        self.assertEqual(result["records"][0]["bytecode_function_body_ranges"], [{
+            "opcode": "DefineFunction2",
+            "declaration_offset_uncompressed": 24,
+            "body_start_uncompressed": 36,
+            "body_end_uncompressed": 37,
+            "body_byte_length": 1,
+        }])
+        self.assertEqual(result["bytecode_function_body_byte_total_on_partitioned_records"], 1)
+
+    def test_rejected_partition_has_no_verified_function_ranges(self):
+        self._set_payload(b"\\x9b\\xff\\xff\\x00")
+        self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
+        self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
+        result = self.run_join()
+        self.assertIsNone(result["records"][0]["bytecode_function_body_ranges"])
+        self.assertEqual(result["bytecode_function_body_byte_total_on_partitioned_records"], 0)
+        self.assertEqual(result["source_partition_rejected_count"], 1)
+
     def test_both_present_not_semantics_verified(self):
         self.lexical["records"][0]["lexical_function_candidate_count"] = 1
         self.lexical["records"][0]["lexical_matched_function_scope_count"] = 1
