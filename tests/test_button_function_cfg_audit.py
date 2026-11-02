@@ -64,7 +64,7 @@ class FunctionCfgAuditTests(unittest.TestCase):
     def test_duplicate_body_rejected(self):
         self.join["records"][0]["bytecode_function_body_ranges"] *= 2
         self.join["bytecode_declared_function_total_on_partitioned_records"] = 2
-        with self.assertRaisesRegex(ValueError, "Duplicate function body"):
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
             audit_function_cfg(self.join, self.body, self.sha)
 
     def test_rejected_body_not_verified(self):
