@@ -94,6 +94,18 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
             raise ValueError("FFDec export path or content hash mismatch")
         if src["lexical_function_candidate_count"] != lex["lexical_function_candidate_count"]:
             raise ValueError("Lexical function count mismatch")
+        # Preserve exact FFDec event-level review coordinates, not inferred
+        # nested-function line mappings. Every hit is counted, including repeats.
+        line_hits = lex.get("lexical_branch_keyword_line_numbers")
+        word_counts = lex.get("lexical_branch_keyword_counts")
+        if type(line_hits) is not dict or set(line_hits) != {"if", "return"} or type(word_counts) is not dict:
+            raise ValueError("Missing FFDec branch line evidence")
+        for word in ("if", "return"):
+            lines, count = line_hits[word], word_counts.get(word)
+            if (type(lines) is not list or type(count) is not int or count < 0
+                    or len(lines) != count or any(type(n) is not int or n < 1 for n in lines)
+                    or lines != sorted(lines)):
+                raise ValueError("FFDec branch line/count mismatch")
         # Crosswalk event lengths were checked against the original SWF bytes.
         event_length = exp.get("source_action_byte_length")
         if type(event_length) is not int or event_length <= 0:
@@ -140,6 +152,8 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
             "ffdec_event_lexical_function_candidate_count": lex["lexical_function_candidate_count"],
             "ffdec_event_lexical_if_keyword_count": lex["lexical_branch_keyword_counts"].get("if", 0),
             "ffdec_event_lexical_return_keyword_count": lex["lexical_branch_keyword_counts"].get("return", 0),
+            "ffdec_event_lexical_if_line_numbers": line_hits["if"],
+            "ffdec_event_lexical_return_line_numbers": line_hits["return"],
             "operand_origin_statuses": sorted({x["origin_status"] for x in body_rows}),
             "operand_origins_complete": complete,
             "source_if_operand_origin_types": sorted({
@@ -163,7 +177,7 @@ def build_review_queue(join: dict, lexical: dict, crosswalk: dict, origins: dict
         "runtime_behavior_verified": False,
         "records": queue,
         "limitations": [
-            "FFDec lexical keyword counts cover the whole button event, not the nested function.",
+            "FFDec lexical keyword counts and line numbers cover the whole button event, not the nested function.",
             "Lexical mismatch is a review candidate, not proof of a decompiler defect.",
             "No source operands, ActionScript body, images, sound or gameplay values are emitted.",
         ],
