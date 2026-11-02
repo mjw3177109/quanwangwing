@@ -36,6 +36,27 @@ def _push_origins(payload: bytes) -> tuple[str, ...]:
     return tuple(origins)
 
 
+def _push_string_values(payload: bytes) -> tuple[bytes, ...]:
+    """Private raw-byte equality keys for ActionPush strings; never serialize values."""
+    values = []
+    pos = 0
+    while pos < len(payload):
+        kind = payload[pos]
+        pos += 1
+        if kind == 0:
+            end = payload.find(b"\x00", pos)
+            if end < 0:
+                raise ValueError("Unterminated ActionPush string")
+            values.append(payload[pos:end])
+            pos = end + 1
+        else:
+            width = PUSH_WIDTHS.get(kind)
+            if width is None or pos + width > len(payload):
+                raise ValueError("Invalid ActionPush element boundary")
+            pos += width
+    return tuple(values)
+
+
 def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
                           max_states: int = 4096, max_depth: int = 128) -> dict:
     if type(max_states) is not int or type(max_depth) is not int or max_states < 1 or max_depth < 1:
@@ -61,6 +82,8 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
                         "candidate_underflow_detected": 0, "source_stack_unresolved": 0})
     if_totals = Counter()
     variable_totals = Counter()
+    literal_classes = {}  # raw values remain in-memory; only local S1/S2 labels leave
+    literal_counts = Counter()
     for row in join["records"]:
         for item in row.get("bytecode_function_body_ranges") or []:
             start, end = item["body_start_uncompressed"], item["body_end_uncompressed"]
@@ -78,6 +101,8 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
                 "candidate_underflow_record_count": None,
                 "if_operand_origin_counts": None,
                 "variable_name_operand_origin_counts": None,
+                "literal_string_equivalence_classes_in_push_order": None,
+                "literal_string_count": None,
                 "runtime_behavior_verified": False,
             }
             if source["stack_status"] != "bounded_candidate_paths":
@@ -158,6 +183,20 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
             if complete:
                 if_totals.update(if_counts)
                 variable_totals.update(variable_counts)
+                # Compare only exact ActionPush string bytes across source-backed
+                # function bodies. This does NOT resolve variable bindings.
+                sequence = []
+                for action in records:
+                    if action.opcode != 0x96:
+                        continue
+                    for raw in _push_string_values(body[action.start + 3:action.end]):
+                        if raw not in literal_classes:
+                            literal_classes[raw] = f"S{len(literal_classes) + 1}"
+                        label = literal_classes[raw]
+                        sequence.append(label)
+                        literal_counts[label] += 1
+                result["literal_string_equivalence_classes_in_push_order"] = sequence
+                result["literal_string_count"] = len(sequence)
             result.update({
                 "origin_status": status,
                 "explored_origin_candidate_state_count": len(seen),
@@ -178,11 +217,16 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
         "source_if_opcode_total": sum(r["source_if_opcode_count"] or 0 for r in output),
         "if_operand_origin_totals": dict(sorted(if_totals.items())),
         "variable_name_operand_origin_totals": dict(sorted(variable_totals.items())),
+        "literal_string_occurrence_count": sum(literal_counts.values()),
+        "distinct_literal_string_class_count": len(literal_classes),
+        "literal_string_class_occurrence_counts": dict(literal_counts),
         "runtime_behavior_verified": False,
         "decompiled_semantics_verified": False,
         "records": output,
         "limitations": [
             "Origin categories describe possible stack producers, not operand values or variable names.",
+            "S-number equality labels are report-local ActionPush string-byte classes, not values or variable bindings.",
+            "No ActionPush literal text, bytes or content hashes are serialized.",
             "Both conditional edges are considered; some candidate paths may be infeasible.",
             "The function entry stack is assumed empty; no Flash VM execution is observed.",
             "Analysis limits, candidate underflow and unresolved source CFGs prevent complete provenance claims.",

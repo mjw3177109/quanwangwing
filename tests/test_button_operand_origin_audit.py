@@ -1,9 +1,10 @@
+import json
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from build_button_operand_origin_audit import audit_operand_origins, _push_origins
+from build_button_operand_origin_audit import audit_operand_origins, _push_origins, _push_string_values
 
 
 class ButtonOperandOriginAuditTests(unittest.TestCase):
@@ -83,6 +84,30 @@ class ButtonOperandOriginAuditTests(unittest.TestCase):
         self.assertIsNone(row["if_operand_origin_counts"])
         self.assertIsNone(row["variable_name_operand_origin_counts"])
         self.assertEqual(report["if_operand_origin_totals"], {})
+
+    def test_actionpush_literal_equality_without_disclosing_values(self):
+        # Two identical strings in one ActionPush produce the same local class.
+        body = b"\x96\x0e\x00\x00alpha\x00\x00alpha\x00\x00"
+        report = self.run_body(body)
+        row = report["records"][0]
+        self.assertEqual(row["literal_string_equivalence_classes_in_push_order"], ["S1", "S1"])
+        self.assertEqual(report["literal_string_occurrence_count"], 2)
+        self.assertEqual(report["distinct_literal_string_class_count"], 1)
+        self.assertEqual(report["literal_string_class_occurrence_counts"], {"S1": 2})
+        self.assertNotIn("alpha", json.dumps(report))
+        self.assertFalse(report["runtime_behavior_verified"])
+
+    def test_unresolved_source_withholds_literal_equality(self):
+        report = self.run_body(b"\x00", source_status="source_cfg_unresolved")
+        self.assertIsNone(report["records"][0]["literal_string_count"])
+        self.assertIsNone(report["records"][0]["literal_string_equivalence_classes_in_push_order"])
+        self.assertEqual(report["literal_string_occurrence_count"], 0)
+
+    def test_literal_string_parser_rejects_unterminated_source(self):
+        with self.assertRaisesRegex(ValueError, "Unterminated"):
+            _push_string_values(b"\x00secret")
+        with self.assertRaisesRegex(ValueError, "Invalid ActionPush"):
+            _push_string_values(b"\x07\x01")
 
     def test_invalid_limits_rejected(self):
         with self.assertRaisesRegex(ValueError, "Positive integer"):

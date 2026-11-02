@@ -360,6 +360,15 @@ jobs:
                   or d["source_get_variable_opcode_total"] != sum(r["source_get_variable_opcode_count"] or 0 for r in rows)
                   or d["source_set_variable_opcode_total"] != sum(r["source_set_variable_opcode_count"] or 0 for r in rows)
                   or d["source_if_opcode_total"] != sum(r["source_if_opcode_count"] or 0 for r in rows)
+                  or d["literal_string_occurrence_count"] != sum(r["literal_string_count"] or 0 for r in rows)
+                  or sum(d["literal_string_class_occurrence_counts"].values()) != d["literal_string_occurrence_count"]
+                  or len(d["literal_string_class_occurrence_counts"]) != d["distinct_literal_string_class_count"]
+                  or any((r["origin_status"] == "bounded_origin_candidates") !=
+                         (r["literal_string_count"] is not None and
+                          r["literal_string_equivalence_classes_in_push_order"] is not None)
+                         for r in rows)
+                  or any(r["literal_string_count"] != len(r["literal_string_equivalence_classes_in_push_order"])
+                         for r in rows if r["literal_string_count"] is not None)
                   or any(r["runtime_behavior_verified"] is not False for r in rows)
                   or d["runtime_behavior_verified"] is not False
                   or d["decompiled_semantics_verified"] is not False):
