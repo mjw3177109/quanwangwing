@@ -79,6 +79,35 @@ class GraphComparisonTests(unittest.TestCase):
         self.assertEqual(r["changed_post_end_candidate_count"], 0)
         self.assertEqual(r["changed_syntactic_path_count"], 0)
 
+    def test_unchanged_difference_class(self):
+        old, new = fixture()
+        new["records"][0].update({
+            "visited_record_count": 18,
+            "visited_post_end_record_count": 4,
+            "syntactic_entry_path_to_post_end_record": True,
+        })
+        r = compare_entry_graphs(old, new)
+        self.assertEqual(r["comparison_difference_class_counts"], {"unchanged": 1})
+        self.assertEqual(r["records"][0]["difference_class"], "unchanged")
+
+    def test_shadowed_body_count_candidate_requires_ffdec_review(self):
+        old, new = fixture()
+        new["records"][0].update({
+            "visited_post_end_record_count": 4,
+            "syntactic_entry_path_to_post_end_record": True,
+        })
+        r = compare_entry_graphs(old, new)
+        self.assertEqual(r["comparison_difference_class_counts"],
+                         {"shadowed_body_only_candidate": 1})
+        self.assertEqual(r["records"][0]["visited_record_delta"], -13)
+        self.assertFalse(r["runtime_reachability_verified"])
+
+    def test_other_difference_requires_source_review(self):
+        old, new = fixture()
+        r = compare_entry_graphs(old, new)
+        self.assertEqual(r["comparison_difference_class_counts"],
+                         {"requires_source_review": 1})
+
     def test_unverified_graph_excluded_without_invented_deltas(self):
         old, new = fixture()
         new["records"][0].update({"graph_verified": False, "status": "graph_rejected"})
@@ -87,6 +116,8 @@ class GraphComparisonTests(unittest.TestCase):
         self.assertEqual(r["compared_count"], 0)
         self.assertEqual(r["new_graph_unverified_count"], 1)
         self.assertNotIn("visited_record_delta", r["records"][0])
+        self.assertNotIn("difference_class", r["records"][0])
+        self.assertEqual(r["comparison_difference_class_counts"], {})
 
     def test_source_mismatch_rejected(self):
         old, new = fixture()
