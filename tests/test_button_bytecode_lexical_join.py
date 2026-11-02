@@ -58,6 +58,11 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
             "body_start_uncompressed": 33,
             "body_end_uncompressed": 35,
             "body_byte_length": 2,
+            "body_partition_status": "partitioned",
+            "body_top_level_record_count": 2,
+            "body_opcode_histogram": {"0x00": 1, "0x04": 1},
+            "body_first_action_end_offset_uncompressed": 34,
+            "body_post_end_record_count": 0,
         }])
         self.assertEqual(result["bytecode_function_body_byte_total_on_partitioned_records"], 2)
         self.assertFalse(result["runtime_behavior_verified"])
@@ -77,7 +82,7 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
     def test_malformed_nested_function_body_is_explicitly_rejected(self):
         # Parent header is valid; the declared 1-byte body has a truncated
         # extended opcode, so no function-body opcode claim may be made.
-        self._set_payload(b"\\x9b\\x06\\x00f\\x00\\x00\\x00\\x01\\x00\\x9b\\x00")
+        self._set_payload(b"\x9b\x06\x00f\x00\x00\x00\x01\x00\x9b\x00")
         self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
         self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
         result = self.run_join()
@@ -90,7 +95,7 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
         self.assertEqual(result["source_partition_rejected_count"], 0)
 
     def test_post_end_body_records_are_only_syntactic(self):
-        self._set_payload(b"\\x9b\\x06\\x00f\\x00\\x00\\x00\\x02\\x00\\x00\\x04\\x00")
+        self._set_payload(b"\x9b\x06\x00f\x00\x00\x00\x02\x00\x00\x04\x00")
         self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
         self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
         result = self.run_join()
@@ -100,7 +105,7 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
         self.assertFalse(result["runtime_behavior_verified"])
 
     def test_no_function_body_has_empty_aggregate(self):
-        self._set_payload(b"\\x04\\x00")
+        self._set_payload(b"\x04\x00")
         self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
         self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
         result = self.run_join()
@@ -110,7 +115,7 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
         self.assertEqual(result["bytecode_function_body_opcode_histogram"], {})
 
     def test_with_scope_in_function_body_is_not_silently_accepted(self):
-        self._set_payload(b"\\x9b\\x06\\x00f\\x00\\x00\\x00\\x03\\x00\\x94\\x00\\x00\\x00")
+        self._set_payload(b"\x9b\x06\x00f\x00\x00\x00\x03\x00\x94\x00\x00\x00")
         self.buttons["buttons"][0]["embedded_action_records"][0]["action_bytes_including_terminator"] = len(self.payload)
         self.crosswalk["records"][0]["source_action_byte_length"] = len(self.payload)
         body = self.run_join()["records"][0]["bytecode_function_body_ranges"][0]
@@ -129,6 +134,11 @@ class ButtonBytecodeLexicalJoinTests(unittest.TestCase):
             "body_start_uncompressed": 36,
             "body_end_uncompressed": 37,
             "body_byte_length": 1,
+            "body_partition_status": "partitioned",
+            "body_top_level_record_count": 1,
+            "body_opcode_histogram": {"0x04": 1},
+            "body_first_action_end_offset_uncompressed": None,
+            "body_post_end_record_count": 0,
         }])
         self.assertEqual(result["bytecode_function_body_byte_total_on_partitioned_records"], 1)
 
