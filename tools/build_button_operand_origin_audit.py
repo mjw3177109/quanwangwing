@@ -58,7 +58,7 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
         stack_index[key] = item
     output = []
     statuses = Counter({"bounded_origin_candidates": 0, "analysis_limit_reached": 0,
-                        "source_stack_unresolved": 0})
+                        "candidate_underflow_detected": 0, "source_stack_unresolved": 0})
     if_totals = Counter()
     variable_totals = Counter()
     for row in join["records"]:
@@ -144,16 +144,26 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
                     limit_reached = True
                     break
                 pending.extend((target, tuple(next_stack)) for target in edges[offset])
+            # A truncated or underflowing exploration cannot support complete
+            # producer totals, even when some paths yielded valid candidates.
+            if limit_reached:
+                status = "analysis_limit_reached"
+            elif underflows:
+                status = "candidate_underflow_detected"
+            else:
+                status = "bounded_origin_candidates"
             if_counts = dict(sorted(Counter(origin for _, origin in if_sources).items()))
             variable_counts = dict(sorted(Counter(origin for _, origin in variable_sources).items()))
-            if_totals.update(if_counts)
-            variable_totals.update(variable_counts)
+            complete = status == "bounded_origin_candidates"
+            if complete:
+                if_totals.update(if_counts)
+                variable_totals.update(variable_counts)
             result.update({
-                "origin_status": "analysis_limit_reached" if limit_reached else "bounded_origin_candidates",
+                "origin_status": status,
                 "explored_origin_candidate_state_count": len(seen),
                 "candidate_underflow_record_count": len(underflows),
-                "if_operand_origin_counts": if_counts,
-                "variable_name_operand_origin_counts": variable_counts,
+                "if_operand_origin_counts": if_counts if complete else None,
+                "variable_name_operand_origin_counts": variable_counts if complete else None,
             })
             statuses[result["origin_status"]] += 1
             output.append(result)
@@ -175,7 +185,7 @@ def audit_operand_origins(join: dict, decompressed: bytes, source_sha256: str,
             "Origin categories describe possible stack producers, not operand values or variable names.",
             "Both conditional edges are considered; some candidate paths may be infeasible.",
             "The function entry stack is assumed empty; no Flash VM execution is observed.",
-            "Analysis limits and unresolved source CFGs prevent complete provenance claims.",
+            "Analysis limits, candidate underflow and unresolved source CFGs prevent complete provenance claims.",
             "No original SWF bytes, ActionScript source, artwork, audio, or gameplay values are emitted.",
         ],
     }

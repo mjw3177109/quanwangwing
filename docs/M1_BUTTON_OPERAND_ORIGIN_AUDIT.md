@@ -8,6 +8,6 @@
 python3 tools/build_button_operand_origin_audit.py --swf 拳皇wing1.4.swf --join build/as2-probe/button-bytecode-lexical-join.json --output build/as2-probe/button-operand-origin-audit.json
 ```
 
-原始字节 SHA、函数范围、opcode 直方图、分支目标和栈候选门禁由已有审计器复核。遇到未知/不完整来源时输出 `source_stack_unresolved`，超过状态/栈上限时输出 `analysis_limit_reached`，不宣称完整。来源计数是静态候选路径去重后的 **(指令偏移, 抽象类型)** 组合，既不是变量读写执行次数，也不是条件真假结果。
+原始字节 SHA、函数范围、opcode 直方图、分支目标和栈候选门禁由已有审计器复核。遇到未知/不完整来源时输出 `source_stack_unresolved`，超过状态/栈上限时输出 `analysis_limit_reached`，遇到候选路径栈下溢时输出 `candidate_underflow_detected`，不宣称完整。对后三种状态，单函数的 `if_operand_origin_counts` 与 `variable_name_operand_origin_counts` 均为 `null`，而不是容易误读为零的空字典；顶层来源总数仅累计完整的 `bounded_origin_candidates`。仍保留已确认的原始 opcode 数和探索状态数用于排查，但不把截断的部分来源计数冒充完整结果。来源计数是静态候选路径去重后的 **(指令偏移, 抽象类型)** 组合，既不是变量读写执行次数，也不是条件真假结果。
 
 此工具尚未解析变量名、实际数据流别名、Flash VM 运行时行为或 FFDec 反编译语义；`runtime_behavior_verified` 与 `decompiled_semantics_verified` 恒为 `false`。不得用本报告推导招式伤害、帧数、碰撞箱或 1:1 完成度。原版 SWF、脚本和音频图像继续保持不公开再分发。
