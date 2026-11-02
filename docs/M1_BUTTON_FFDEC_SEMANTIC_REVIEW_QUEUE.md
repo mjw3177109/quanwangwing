@@ -28,3 +28,9 @@ python3 tools/build_button_ffdec_semantic_review_queue.py \
 复核坐标还必须位于对应的原版 `ButtonCondAction` 有效负载范围内。范围上界使用已经与原始 SWF 字节核对的 FFDec crosswalk `source_action_byte_length`，负载起点为 `action_offset_uncompressed + 4`（两个 16 位头字段）。函数声明不能落在头字段中，函数体不能跨越事件末尾；同一事件中顶层函数范围不得重叠。
 
 对结构已成功分区、操作数来源状态为 `bounded_origin_candidates` 的函数，额外核对原始 ActionRecord opcode 直方图的总数，以及 `GetVariable (0x1c)`、`SetVariable (0x1d)`、`ActionIf (0x9d)` 与来源分析的指令数。缺失或不一致时拒绝生成复核队列。该约束仅防止不同来源的静态证据被错误拼接，**不代表变量、条件或 FFDec 反编译语义已被证明**；仍不输出脚本正文、操作数或媒体。
+
+## M1 增量：FFDec 条件分支行号定位（仅元数据）
+
+`build_button_ffdec_lexical_audit.py` 现对经过 SHA-256 校验的 FFDec 按钮事件源码记录 `if` / `return` 词法命中行号（从 1 开始）。字符串和注释先屏蔽；同一行的多次命中保留重复行号，故行号数组长度与事件级关键词计数一致。`build_button_ffdec_semantic_review_queue.py` 对计数、排序、类型和缺失证据执行失败即停止的检查，并在受限复核队列中提供 `ffdec_event_lexical_if_line_numbers`、`ffdec_event_lexical_return_line_numbers`。
+
+审核人员可用原始 SWF 函数体字节偏移及 FFDec 导出路径/哈希定位同一事件，再用行号查看 FFDec 反编译输出的分支位置。**这些行号属于整个 FFDec 按钮事件，不能直接对应原始嵌套 DefineFunction 的 `ActionIf`，也不能证明两个表示的语义一致。** 未导出任何脚本行文本、操作数、图片或音频；原版内容仍须留在受限环境。
