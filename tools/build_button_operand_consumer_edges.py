@@ -98,6 +98,11 @@ def trace_body(body, start, locations, branches, max_states=4096, max_depth=128)
         expected_class = 'body_end' if target == len(body) else 'record_start'
         if row['target_classification'] != expected_class:
             raise ValueError('Branch target classification does not match source boundary')
+        if ('branch_opcode' in row and
+                row['branch_opcode'] != f'0x{by_offset[offset][2]:02x}'):
+            raise ValueError('Branch opcode does not match source ActionRecord')
+        if 'execution_verified' in row and row['execution_verified'] is not False:
+            raise ValueError('Unsupported branch execution verification claim')
         branch_targets[offset] = target
     if set(branch_targets) != {pos for pos, _, op in records if op in (0x99, 0x9D)}:
         raise ValueError('Missing or extra verified branch')
@@ -175,10 +180,23 @@ def build_consumer_map(join, origins, branch_audit, decompressed, source_sha256)
         if key in origin_index:
             raise ValueError('Duplicate origin function')
         origin_index[key] = row
+    branch_rows = branch_audit['records']
+    if branch_audit.get('branch_record_count') != len(branch_rows):
+        raise ValueError('Branch report count mismatch')
     branch_index = {}
-    for row in branch_audit['records']:
+    branch_keys = set()
+    for row in branch_rows:
         key = (row['button_character_id'], row['function_body_start_uncompressed'])
+        branch_key = (key, row['branch_offset_uncompressed'])
+        if branch_key in branch_keys:
+            raise ValueError('Duplicate branch provenance')
+        if (row.get('branch_opcode') not in ('0x99', '0x9d') or
+                row.get('execution_verified') is not False):
+            raise ValueError('Invalid branch source metadata')
+        branch_keys.add(branch_key)
         branch_index.setdefault(key, []).append(row)
+    if not set(branch_index).issubset(origin_index):
+        raise ValueError('Orphan branch provenance')
     output = []
     visited = set()
     for row in join['records']:

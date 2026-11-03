@@ -114,7 +114,7 @@ class ConsumerEdgesTests(unittest.TestCase):
                    'records': [{'button_character_id': 693, 'function_body_start_uncompressed': 0,
                                 'origin_status': 'source_stack_unresolved',
                                 'literal_string_locations': None}]}
-        branches = {'source_sha256': sha, 'records': []}
+        branches = {'source_sha256': sha, 'branch_record_count': 0, 'records': []}
         r = build_consumer_map(join, origins, branches, b'\x00', sha)
         self.assertIsNone(r['records'][0]['candidate_consumer_edges'])
         self.assertEqual(r['complete_function_count'], 0)
@@ -123,6 +123,54 @@ class ConsumerEdgesTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'SHA mismatch'):
             build_consumer_map({'source_sha256': 'x'}, {'source_sha256': 'y'},
                                {'source_sha256': 'x'}, b'', 'x')
+
+
+    def test_reject_branch_report_count_mismatch(self):
+        sha = 'a' * 64
+        join = {'source_sha256': sha, 'records': []}
+        origins = {'source_sha256': sha, 'function_body_count': 0, 'records': []}
+        branches = {'source_sha256': sha, 'branch_record_count': 1, 'records': []}
+        with self.assertRaisesRegex(ValueError, 'Branch report count mismatch'):
+            build_consumer_map(join, origins, branches, b'', sha)
+
+    def test_reject_orphan_branch_provenance(self):
+        sha = 'a' * 64
+        join = {'source_sha256': sha, 'records': []}
+        origins = {'source_sha256': sha, 'function_body_count': 0, 'records': []}
+        row = {'button_character_id': 693, 'function_body_start_uncompressed': 0,
+               'branch_offset_uncompressed': 0, 'branch_opcode': '0x9d',
+               'execution_verified': False}
+        branches = {'source_sha256': sha, 'branch_record_count': 1, 'records': [row]}
+        with self.assertRaisesRegex(ValueError, 'Orphan branch provenance'):
+            build_consumer_map(join, origins, branches, b'', sha)
+
+    def test_reject_duplicate_branch_provenance(self):
+        sha = 'a' * 64
+        join = {'source_sha256': sha, 'records': []}
+        origins = {'source_sha256': sha, 'function_body_count': 0, 'records': []}
+        row = {'button_character_id': 693, 'function_body_start_uncompressed': 0,
+               'branch_offset_uncompressed': 0, 'branch_opcode': '0x9d',
+               'execution_verified': False}
+        branches = {'source_sha256': sha, 'branch_record_count': 2,
+                    'records': [row, dict(row)]}
+        with self.assertRaisesRegex(ValueError, 'Duplicate branch provenance'):
+            build_consumer_map(join, origins, branches, b'', sha)
+
+    def test_reject_forged_branch_opcode(self):
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\x00\x00\x00'
+        row = {'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 10,
+               'target_classification': 'record_start', 'branch_opcode': '0x99',
+               'execution_verified': False}
+        with self.assertRaisesRegex(ValueError, 'Branch opcode does not match'):
+            trace_body(body, 0, [], [row])
+
+    def test_reject_unsupported_branch_execution_claim(self):
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\x00\x00\x00'
+        row = {'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 10,
+               'target_classification': 'record_start', 'branch_opcode': '0x9d',
+               'execution_verified': True}
+        with self.assertRaisesRegex(ValueError, 'Unsupported branch execution'):
+            trace_body(body, 0, [], [row])
 
 
 if __name__ == '__main__':
