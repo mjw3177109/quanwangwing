@@ -157,7 +157,7 @@ class ConsumerEdgesTests(unittest.TestCase):
             build_consumer_map(join, origins, branches, b'', sha)
 
     def test_reject_forged_branch_opcode(self):
-        body = b'\\x96\\x02\\x00\\x05\\x01\\x9d\\x02\\x00\\x00\\x00\\x00'
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\x00\x00\x00'
         row = {'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 10,
                'target_classification': 'record_start', 'branch_opcode': '0x99',
                'execution_verified': False}
@@ -165,7 +165,7 @@ class ConsumerEdgesTests(unittest.TestCase):
             trace_body(body, 0, [], [row])
 
     def test_reject_unsupported_branch_execution_claim(self):
-        body = b'\\x96\\x02\\x00\\x05\\x01\\x9d\\x02\\x00\\x00\\x00\\x00'
+        body = b'\x96\x02\x00\x05\x01\x9d\x02\x00\x00\x00\x00'
         row = {'branch_offset_uncompressed': 5, 'target_offset_uncompressed': 10,
                'target_classification': 'record_start', 'branch_opcode': '0x9d',
                'execution_verified': True}
