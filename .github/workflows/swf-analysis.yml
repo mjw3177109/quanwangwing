@@ -27,8 +27,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: swf-analysis-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep the hourly main-branch schedule independent from push/PR runs.
+  group: swf-analysis-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   analyze:
