@@ -61,18 +61,30 @@
 
 只有全部关键用例通过原版对照，才能将版本标记为 1:1 验收通过。
 
+## M1 当前证据补充（2026-11-05）
+
+以下结果来自同一原始 SWF SHA-256 cf7d7225b488206b7e19914d2e09ac37aab3f1618a1b32d84f6d8423e7a4eebb，并由 Actions #41895140039 的受限 FFDec 导出与 Artifact #13355570986 复核：
+
+- Java 为 1.8.0_504；FFDec 18.0.0 的 --phase scripts 成功，耗时 44 秒，导出 7,054 个 .as 文件、41,054,213 字节；126 个空文件均被核验为 no-op，unexpected empty 为 0。Artifact 仅含 28 个 JSON metadata 文件，不含 .as 源码。
+- SWF 脚本入口报告包含 3,065 个 legacy action containers：Tag 12（DoAction）2,737 个、Tag 59（DoInitAction）328 个；ABC 容器为 0，FileAttributes AS3 标记为 false。当前可确认没有观察到 AS3 ABC 容器，但仅凭这些标签仍不能区分每个 legacy action 的 AS1/AS2 语言级版本。
+- 语义候选索引覆盖 1,751 个候选脚本、199 个函数范围，未匹配函数候选为 0。词法标记计数为 attack 187、combo 222、guard 16、hitbox 2；collision、damage、knockback、move_state 均为 0。它们只是检索线索，不是运行时行为或数值证明。
+- 角色交叉表有 16 个 base/type2 变体候选，关联 16 条 Sprite 时间轴；涉及 Iori、K、Kula、Kyo、Mai、Moriya、Orochi、Ryo 八个候选名称，不能据此认定八者均可选。角色脚本中有 45 个函数范围；attack/combo/keyboard/timeline_jump 词法标记分别为 36/43/22/25。
+- 角色时间轴调用候选共 25 个：6 个字符串字面量、19 个动态或未解析参数。6 个字面量标签只在其他 Sprite 时间轴出现，且没有静态可达放置关系；19 个动态参数仍未解析，不能当作已确认的招式帧名。
+- 两个 hitbox 词法候选文件名为 HitCheck_mc.as 与 hitCheck_obj.as；尚未证明其正文、实例放置、形状几何与战斗运行时之间的关系。
+- 音频结构有 301 个 DefineSound、816 个 StartSound、1,551 个 SoundStreamHead；816 个 StartSound 中，125 个与同帧脚本容器并存、691 个没有同帧脚本容器。未发现未解析 soundId；同帧共存不等于脚本因果触发。
+
 ## 当前已知限制
 
-已在 GitHub Actions 通过结构清点与索引测试，详见 `docs/SWF_TAG_BASELINE.md` 和 `docs/SWF_INVENTORY.md`。原始 SWF SHA-256 为 `cf7d7225b488206b7e19914d2e09ac37aab3f1618a1b32d84f6d8423e7a4eebb`。FFDec 18.0.0 对此 SWF 的 `-dumpAS2`、`-linkReport` 曾分别超时 90 秒，脚本源码导出、角色/招式语义及未知 tag 253 的作用仍未验收。已发现 Kyo、Mai、Iori、K、Kula、Ryo、Moriya、Orochi 的角色类候选，不能当作已确认可选角色表。HTML5 引擎已锁定原版 32 FPS 逻辑时钟，Canvas 内部尺寸已采用原版 660×485 舞台 RECT；画面、人物与招式数值仍为调试占位，未恢复原版角色、动画、UI 或战斗行为，尚未达到视觉/战斗 1:1。
+SWF header、tag 清点、资源 metadata manifest、时间轴/声音静态索引及一次完整 FFDec 脚本导出已取得证据，但 M1 尚未完成。FFDec 18.0.0 的 -dumpAS2、-linkReport 历史上分别在 90 秒限制内超时；最新成功的 --phase scripts 只证明导出完整性，不等于函数语义已恢复。AS1/AS2 版本区分、19 个动态时间轴参数、角色是否可选、HitCheck 的实际几何与运行时绑定、音频因果触发及未知 tag 253/255 作用仍未验收。原始 SWF SHA-256 为 cf7d7225b488206b7e19914d2e09ac37aab3f1618a1b32d84f6d8423e7a4eebb。原始素材与 ActionScript 正文继续留在 runner/local，不进入公开 artifact。HTML5 Canvas 仍使用调试占位，未恢复原版角色、动画、UI 或战斗行为，尚未达到视觉/战斗 1:1。
 
 ## 下一轮优先任务
 
-1. 已通过 `--phase scripts` 独立导出 7,054 个 .as 文件（run 41001157724）；下一步校验逐文件完整性、类间引用、反编译警告和语义，不将源码公开上传。
-2. 从导出脚本中提取类名、动作入口、键位与战斗判定关系，建立带来源的角色/动作/判定数据表。
-3. 检查 Unknown tag 253（2,729 条）与 255（1 条）的实际作用；保留原始字节偏移，不假设它们可以安全丢弃。
-4. 调试 Canvas 内部尺寸已与原版 660×485 对齐；下一步按原版时间轴、实例层级和 UI 恢复真实舞台渲染，禁止将调试方块当作原版角色。
-5. 导出并校验原版图像/音效的数量、引用与时间轴触发位置；素材仍留在本地，不自动发布。
-
+1. 先解析 19 个动态 gotoAndPlay/gotoAndStop 参数与 2 个动态 attachMovie 标识符，做同函数范围赋值/引用追踪；每条映射保留源文件哈希、行号、SWF 时间轴和偏移，未证明运行时绑定前不得升级为确定关系。
+2. 重点核验 HitCheck_mc.as、hitCheck_obj.as 及相关 DefineSprite/PlaceObject/形状引用；只有能闭合实例、时间轴和几何证据时，才写 hitbox/hurtbox/pushbox 数据。
+3. 将 16 个角色变体候选的函数调用、FrameLabel、静态放置关系与角色选择流程交叉核验；明确区分候选角色、可选角色和运行时实例。
+4. 对 -dumpAS2 与 -linkReport 分开做有界重试并记录超时/退出码；继续区分 legacy ActionScript 版本与关键函数入口。当前 ABC=0，不要虚构 AS3 源码。
+5. 完成 816 个 StartSound 与 301 个 DefineSound 的 ID、时间轴、帧、循环/流音频关系映射；125 个同帧脚本关联只作为优先审阅队列。
+6. 上述证据闭合后，再按真实 characterId、Sprite 帧序列、矩阵、depth 和音频触发实现 Canvas 渲染；调试方块不得作为原版角色或完成度证据。
 ## M1 增量：逐帧引用与未知标签邻接证据
 
 运行 `python3 tools/build_timeline_index.py --manifest build/swf-analysis/swf-manifest.json --output build/swf-analysis/timeline-index.json`。
