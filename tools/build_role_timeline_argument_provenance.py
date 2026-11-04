@@ -18,12 +18,12 @@ from as2_reference_scopes import lexical_function_scopes, scope_context
 from build_as2_semantic_index import mask_comments_strings
 from build_role_timeline_call_evidence import CALL, scan_calls
 
-SHA = re.compile(r"[0-9a-f]{64}\\Z")
-TOKEN = re.compile(r"(?<![\\w$])([A-Za-z_$][\\w$]*)(?![\\w$])")
-IDENTIFIER = re.compile(r"[A-Za-z_$][\\w$]*\\Z")
-MEMBER = re.compile(r"[A-Za-z_$][\\w$]*(?:\\s*\\.\\s*[A-Za-z_$][\\w$]*)+\\Z")
-PLAIN_STRING = re.compile(r"""^\\s*(['"])([^'"\\\\\\r\\n]*)\\1\\s*(?:;|,|\\)|\\}|$)""")
-ASSIGN = re.compile(r"\\s*(>>>=|>>=|<<=|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|=(?!=|>))")
+SHA = re.compile(r"[0-9a-f]{64}\Z")
+TOKEN = re.compile(r"(?<![\w$])([A-Za-z_$][\w$]*)(?![\w$])")
+IDENTIFIER = re.compile(r"[A-Za-z_$][\w$]*\Z")
+MEMBER = re.compile(r"[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)+\Z")
+PLAIN_STRING = re.compile(r"""^\s*(['"])([^'"\\\r\n]*)\1\s*(?:;|,|\)|\}|$)""")
+ASSIGN = re.compile(r"\s*(>>>=|>>=|<<=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|=(?!=|>))")
 EXCLUDED = {
     "this", "_root", "_parent", "_global", "true", "false", "null",
     "undefined", "NaN", "Infinity", "new", "function", "return", "var",
@@ -52,7 +52,7 @@ def _count(value, label, minimum=0):
 def _valid_path(value):
     return (isinstance(value, str) and value.startswith("scripts/")
             and value.endswith(".as") and ".." not in Path(value).parts
-            and not Path(value).is_absolute() and "\\\\" not in value)
+            and not Path(value).is_absolute() and "\\" not in value)
 
 
 def _first_arg(source: str, masked: str, start: int):
@@ -114,7 +114,7 @@ def _shape(raw: str, masked: str) -> str:
 
 def _line_offsets(masked: str):
     offsets = [0]
-    offsets.extend(i + 1 for i, char in enumerate(masked) if char == "\\n")
+    offsets.extend(i + 1 for i, char in enumerate(masked) if char == "\n")
     return offsets
 
 
@@ -125,7 +125,7 @@ def _offset_for_line(offsets, line: int, text_length: int):
 
 
 def _literal_component(raw: str):
-    match = re.fullmatch(r"""\\s*(['"])([^'"\\\\\\r\\n]*)\\1\\s*""", raw)
+    match = re.fullmatch(r"""\s*(['"])([^'"\\\r\n]*)\1\s*""", raw)
     if not match:
         return None
     return _sha(match.group(2))
@@ -177,6 +177,7 @@ def _component_evidence(raw: str, masked: str, position: int, label_map: dict):
             "position": token_position,
             "identifier_sha256": _sha(name),
             "token_role": "member_component" if "." in masked else "expression_identifier",
+            "_identifier": name,
         })
     if IDENTIFIER.fullmatch(masked.strip()):
         kind = "identifier"
@@ -205,7 +206,7 @@ def _rhs_evidence(source: str, masked: str, rhs_start: int, label_map: dict):
         }
     masked_tail = masked[rhs_start:].lstrip()
     identifier = TOKEN.match(masked_tail)
-    if identifier and re.fullmatch(r"\\s*(?:;|,|\\)|\\}|$)", masked_tail[identifier.end():]):
+    if identifier and re.fullmatch(r"\s*(?:;|,|\)|\}|$)", masked_tail[identifier.end():]):
         return {"rhs_kind": "identifier_candidate",
                 "rhs_sha256": _sha(identifier.group(1))}
     if not masked_tail:
@@ -235,14 +236,14 @@ def _prior_assignments(source: str, masked: str, identifier: str,
         before = masked[max(body_start, match.start() - 48):match.start()]
         if before.rstrip().endswith("."):
             lhs = "member_property_candidate"
-        elif re.search(r"\\bvar\\s+$", before):
+        elif re.search(r"\bvar\s+$", before):
             lhs = "variable_declaration_candidate"
         else:
             lhs = "direct_assignment_candidate"
         rhs = (_rhs_evidence(source, masked, operator.end(), label_map)
                if op == "=" else {"rhs_kind": "compound_assignment"})
         rows.append({
-            "line": bisect_right(offsets, match.start() - 1),
+            "line": bisect_right(offsets, match.start()),
             "lhs_kind": lhs, "operator": op, **rhs,
             "runtime_binding_verified": False,
         })
@@ -312,11 +313,11 @@ def build_evidence(scripts_root: Path, export_index: dict, role_crosswalk: dict,
         parsed = scan_calls(raw)
         source_calls = []
         for match in CALL.finditer(masked):
-            if re.search(r"\\bfunction\\s+$", masked[max(0, match.start() - 64):match.start()]):
+            if re.search(r"\bfunction\s+$", masked[max(0, match.start() - 64):match.start()]):
                 continue
             source_calls.append({
                 "start": match.start(), "arg_start": match.end(),
-                "line": bisect_right([i for i, c in enumerate(masked) if c == "\\n"], match.start() - 1) + 1,
+                "line": bisect_right([i for i, c in enumerate(masked) if c == "\n"], match.start() - 1) + 1,
                 "method": match.group("method"),
             })
         indexed_calls = calls_role.get("calls")
@@ -338,10 +339,6 @@ def build_evidence(scripts_root: Path, export_index: dict, role_crosswalk: dict,
             for field in ("line", "method", "receiver_kind"):
                 if parsed_call.get(field) != scope_call.get(field):
                     raise ValueError("Role scope callsite provenance mismatch")
-            call_key = (key, site["line"], site["method"])
-            if call_key in seen_calls:
-                raise ValueError("Duplicate role callsite")
-            seen_calls.add(call_key)
             if parsed_call["argument_kind"] != "dynamic_or_unresolved":
                 continue
             argument = _first_arg(source_text, masked, site["arg_start"])
@@ -367,11 +364,7 @@ def build_evidence(scripts_root: Path, export_index: dict, role_crosswalk: dict,
                     component_raw, component_masked, position, label_map)
                 component_rows.append(component)
                 for ref in refs:
-                    identifier = next((m.group(1) for m in TOKEN.finditer(component_masked)
-                                       if _sha(m.group(1)) == ref["identifier_sha256"]
-                                       and ref["position"] == list(TOKEN.finditer(component_masked)).index(m)), None)
-                    if identifier is None:
-                        continue
+                    identifier = ref.pop("_identifier")
                     if scope is None:
                         parameter_count, assignments = 0, []
                     else:
@@ -460,7 +453,7 @@ def main():
         load(args.call_evidence), load(args.scope_evidence),
         load(args.timeline_index))
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in result.items()
                       if k not in ("events", "limitations")}, ensure_ascii=False))
 
