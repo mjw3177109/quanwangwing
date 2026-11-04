@@ -41,6 +41,9 @@ jobs:
       - name: Test original bytecode versus FFDec lexical join
         run: python3 -m unittest discover -s tests -p 'test_button_bytecode_lexical_join.py' -v
 
+      - name: Test AS2 combat candidate markers
+        run: python3 -m unittest discover -s tests -p 'test_as2_semantic_index.py' -v
+
       - name: Export ActionScript with bounded retry for partial FFDec output
         run: |
           for attempt in 1 2 3; do

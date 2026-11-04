@@ -124,3 +124,49 @@ if (some == function() {}) { }
             assets = {"source_sha256": "a", "character_class_candidates": []}
             with self.assertRaisesRegex(ValueError, "unexpectedly short"):
                 build_index(root, export, assets)
+
+
+    def test_combat_candidate_markers_are_masked_and_scoped(self):
+        source = b'''// hitBox collide attack damage guard combo knockBack currentAction
+var ignored = "hitBox collide attack damage guard combo knockBack currentAction";
+function resolveHit() {
+  this.hitBox = target;
+  this.collide(target);
+  this.attack(target);
+  this.damage = 12;
+  this.guard();
+  this.combo = 1;
+  this.knockBack(3);
+  this.currentAction = "attack";
+}
+'''
+        hints = inspect_source(source)
+        expected = {
+            "hitbox": 1, "collision": 1, "attack": 1, "damage": 1,
+            "guard": 1, "combo": 1, "knockback": 1, "move_state": 1,
+        }
+        for marker, count in expected.items():
+            self.assertEqual(hints["marker_counts"][marker], count)
+            self.assertEqual(hints["function_scopes"][0]["marker_counts"][marker], count)
+        self.assertNotIn("target", str(hints))
+        self.assertNotIn("this.attack", str(hints))
+        self.assertNotIn("this.damage", str(hints))
+
+    def test_combat_named_system_script_is_included(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "scripts/__Packages/HitBox.as"
+            path.parent.mkdir(parents=True)
+            raw = b"class HitBox { function check() { this.overlap(other); } }"
+            path.write_bytes(raw)
+            export = {
+                "source_sha256": "a" * 64, "script_count": 1,
+                "unexpected_empty_count": 0,
+                "files": [{"path": "scripts/__Packages/HitBox.as",
+                           "size_bytes": len(raw),
+                           "sha256": hashlib.sha256(raw).hexdigest()}],
+            }
+            assets = {"source_sha256": "a" * 64, "character_class_candidates": []}
+            result = build_index(root, export, assets)
+            self.assertEqual(result["candidate_script_count"], 1)
+            self.assertEqual(result["candidate_scripts"][0]["marker_counts"]["collision"], 1)

@@ -36,3 +36,10 @@ AS2 可能使用 `Class.prototype.method = function(...)`、`this.onEnterFrame =
 同时将经哈希与最小长度门禁验证的 `__Packages/role_corn/Role.as` 纳入候选语义索引；此前仅验证其完整性却未检查其方法形式。PR 检查会在临时 runner 上重新导出并生成 metadata-only artifact，源文件正文不上传。
 
 后续必须逐项核查函数赋值与原版 SWF 时间轴、事件和运行行为的关联，不能仅凭函数名称填写伤害、hitbox 或动作帧数。
+
+
+## M1 增量：战斗与碰撞相关词法候选
+
+AS2 语义索引新增 hitbox、collision、attack、damage、guard、combo、knockback、move_state 八类词法标记，并扩大系统脚本候选文件名匹配范围（HitBox、HurtBox、Collision、KnockBack、HitStun）。所有匹配都在注释和字符串遮蔽后进行；计数按最内层可识别函数范围归属，无法归属的仍保留为 unscoped。
+
+这些标记只用于缩小人工审阅范围：命中 attack 不代表该方法就是可执行招式，命中 hitBox 不代表已取得碰撞框坐标，命中 damage 不代表伤害数值已确认。输出仍只含文件元数据、标识符/行号和计数，不含 ActionScript 正文、图片、音乐或音效。必须继续与原始 SWF 时间轴、实例层级及实际运行行为交叉验证后，才能写入角色动作和判定 JSON。

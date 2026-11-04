@@ -33,6 +33,14 @@ EXTENDS = re.compile(r"\bextends\s+([A-Za-z_$][\w.$]*)\b")
 MARKERS = {
     "keyboard": re.compile(r"\bKey\s*\.\s*(?:isDown|addListener)\b"),
     "hit_test": re.compile(r"\bhitTest\s*\("),
+    "hitbox": re.compile(r"\b(?:hitBox|hurtBox|pushBox|hitCheck|checkHit|isHit)\b", re.I),
+    "collision": re.compile(r"\b(?:collision|collide|overlap)\b", re.I),
+    "attack": re.compile(r"\b(?:attack|atk|punch|kick)\b", re.I),
+    "damage": re.compile(r"\b(?:damage|dmg)\b", re.I),
+    "guard": re.compile(r"\b(?:guard|block|defend)\b", re.I),
+    "combo": re.compile(r"\b(?:combo|hitCount|chain)\b", re.I),
+    "knockback": re.compile(r"\b(?:knockback|knockdown|hitstun|stun)\b", re.I),
+    "move_state": re.compile(r"\b(?:currentAction|actionState|moveState|motionState|currentState|stateMachine)\b", re.I),
     "timeline_jump": re.compile(r"\bgotoAnd(?:Play|Stop)\s*\("),
     "sprite_attach": re.compile(r"\battachMovie\s*\("),
     "frame_callback": re.compile(r"\bonEnterFrame\b"),
@@ -40,7 +48,7 @@ MARKERS = {
     "timer": re.compile(r"\b(?:setInterval|getTimer)\s*\("),
 }
 SYSTEM_NAME = re.compile(
-    r"(?:hitcheck|input|key|player|cpu|stage|game|battle|fight|attack|damage|guard|combo)", re.I
+    r"(?:hitcheck|hitbox|hurtbox|collision|knockback|hitstun|input|key|player|cpu|stage|game|battle|fight|attack|damage|guard|combo)", re.I
 )
 
 
