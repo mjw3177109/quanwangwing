@@ -33,14 +33,14 @@ EXTENDS = re.compile(r"\bextends\s+([A-Za-z_$][\w.$]*)\b")
 MARKERS = {
     "keyboard": re.compile(r"\bKey\s*\.\s*(?:isDown|addListener)\b"),
     "hit_test": re.compile(r"\bhitTest\s*\("),
-    "hitbox": re.compile(r"\b(?:hitBox|hurtBox|pushBox|hitCheck|checkHit|isHit)\b", re.I),
-    "collision": re.compile(r"\b(?:collision|collide|overlap)\b", re.I),
-    "attack": re.compile(r"\b(?:attack|atk|punch|kick)\b", re.I),
-    "damage": re.compile(r"\b(?:damage|dmg)\b", re.I),
-    "guard": re.compile(r"\b(?:guard|block|defend)\b", re.I),
-    "combo": re.compile(r"\b(?:combo|hitCount|chain)\b", re.I),
-    "knockback": re.compile(r"\b(?:knockback|knockdown|hitstun|stun)\b", re.I),
-    "move_state": re.compile(r"\b(?:currentAction|actionState|moveState|motionState|currentState|stateMachine)\b", re.I),
+    "hitbox": re.compile(r"\b(?:hit[_]?box|hurt[_]?box|push[_]?box|hit[_]?check|check[_]?hit|is[_]?hit)[A-Za-z0-9_$]*\b", re.I),
+    "collision": re.compile(r"\b(?:collision|collide|overlap)[A-Za-z0-9_$]*\b", re.I),
+    "attack": re.compile(r"\b(?:attack|atk|punch|kick)[A-Za-z0-9_$]*\b", re.I),
+    "damage": re.compile(r"\b(?:damage|dmg)[A-Za-z0-9_$]*\b", re.I),
+    "guard": re.compile(r"\b(?:guard|block|defend)[A-Za-z0-9_$]*\b", re.I),
+    "combo": re.compile(r"\b(?:combo|hit[_]?count|chain)[A-Za-z0-9_$]*\b", re.I),
+    "knockback": re.compile(r"\b(?:knock[_]?back|knock[_]?down|hit[_]?stun|stun)[A-Za-z0-9_$]*\b", re.I),
+    "move_state": re.compile(r"\b(?:current[_]?action|action[_]?state|move[_]?state|motion[_]?state|current[_]?state|state[_]?machine)[A-Za-z0-9_$]*\b", re.I),
     "timeline_jump": re.compile(r"\bgotoAnd(?:Play|Stop)\s*\("),
     "sprite_attach": re.compile(r"\battachMovie\s*\("),
     "frame_callback": re.compile(r"\bonEnterFrame\b"),
@@ -191,7 +191,7 @@ def build_index(scripts_root: Path, export_index: dict, asset_index: dict) -> di
             raise ValueError("Critical Role.as export is unexpectedly short; likely partial FFDec output")
         is_role = rel in expected_roles
         is_core = rel == critical
-        is_system = rel.startswith("scripts/__Packages/") and SYSTEM_NAME.search(Path(rel).stem) is not None
+        is_system = SYSTEM_NAME.search(rel) is not None
         is_frame = "/frame_" in rel and len(raw) >= 32768
         if is_role or is_core or is_system or is_frame:
             hints = inspect_source(raw)
