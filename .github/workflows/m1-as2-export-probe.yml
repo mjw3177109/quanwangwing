@@ -44,6 +44,9 @@ jobs:
       - name: Test AS2 combat candidate markers
         run: python3 -m unittest discover -s tests -p 'test_as2_semantic_index.py' -v
 
+      - name: Test role timeline argument provenance parser
+        run: python3 -m unittest discover -s tests -p 'test_role_timeline_argument_provenance.py' -v
+
       - name: Export ActionScript with bounded retry for partial FFDec output
         run: |
           for attempt in 1 2 3; do
@@ -674,6 +677,48 @@ jobs:
               raise SystemExit("Unverified MovieClip runtime binding claimed")
           PY
 
+      - name: Trace dynamic role timeline arguments to prior assignments and FrameLabels (metadata only)
+        run: |
+          python3 tools/build_role_timeline_argument_provenance.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --role-crosswalk build/as2-probe/role-crosswalk.json \
+            --call-evidence build/as2-probe/role-timeline-call-evidence.json \
+            --scope-evidence build/as2-probe/role-scope-target-evidence.json \
+            --timeline-index build/as2-probe/timeline-index.json \
+            --output build/as2-probe/role-timeline-argument-provenance.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("build/as2-probe")
+          d = json.loads((root / "role-timeline-argument-provenance.json").read_text(encoding="utf-8"))
+          c = json.loads((root / "role-timeline-call-evidence.json").read_text(encoding="utf-8"))
+          s = json.loads((root / "role-scope-target-evidence.json").read_text(encoding="utf-8"))
+          if d["source_sha256"] != c["source_sha256"] or d["source_sha256"] != s["source_sha256"]:
+              raise SystemExit("Timeline argument provenance source mismatch")
+          if d["role_variant_count"] != 16 or d["role_variant_count"] != c["role_variant_count"]:
+              raise SystemExit("Timeline argument role coverage mismatch")
+          if d["call_candidate_count"] != c["call_candidate_count"] or d["call_candidate_count"] != s["call_candidate_count"]:
+              raise SystemExit("Timeline argument call coverage mismatch")
+          if d["dynamic_call_count"] != c["argument_kind_counts"]["dynamic_or_unresolved"]:
+              raise SystemExit("Dynamic timeline argument count mismatch")
+          if sum(d["argument_shape_counts"].values()) != d["dynamic_call_count"]:
+              raise SystemExit("Timeline argument shape accounting mismatch")
+          if sum(e["identifier_reference_count"] for e in d["events"]) != d["identifier_reference_count"]:
+              raise SystemExit("Timeline identifier reference accounting mismatch")
+          if sum(r["prior_assignment_candidate_count"] for e in d["events"] for r in e["identifier_references"]) != d["prior_assignment_candidate_count"]:
+              raise SystemExit("Timeline prior assignment accounting mismatch")
+          if sum(r["prior_frame_label_assignment_candidate_count"] for e in d["events"] for r in e["identifier_references"]) != d["prior_frame_label_assignment_candidate_count"]:
+              raise SystemExit("Timeline FrameLabel assignment accounting mismatch")
+          if not 0 <= d["calls_with_prior_frame_label_assignment_candidate_count"] <= d["dynamic_call_count"]:
+              raise SystemExit("Timeline FrameLabel candidate call bound mismatch")
+          if any(event["runtime_binding_verified"] for event in d["events"]):
+              raise SystemExit("Unverified timeline runtime binding claimed")
+          if any(r["runtime_binding_verified"] or any(a["runtime_binding_verified"] for a in r["prior_assignments"])
+                 for e in d["events"] for r in e["identifier_references"]):
+              raise SystemExit("Unverified identifier assignment claimed as runtime binding")
+          PY
+
       - name: Trace direct role placements and DoInitAction targets
         run: |
           python3 tools/build_role_reference_evidence.py \
@@ -980,5 +1025,6 @@ jobs:
             build/as2-probe/dynamic-attach-scope-pairs.json
             build/as2-probe/dynamic-attach-assignment-sites.json
             build/as2-probe/dynamic-attach-function-body-join.json
+            build/as2-probe/role-timeline-argument-provenance.json
           if-no-files-found: warn
           retention-days: 7
