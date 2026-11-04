@@ -43,3 +43,6 @@ AS2 可能使用 `Class.prototype.method = function(...)`、`this.onEnterFrame =
 AS2 语义索引新增 hitbox、collision、attack、damage、guard、combo、knockback、move_state 八类词法标记，并扩大系统脚本候选文件名匹配范围（HitBox、HurtBox、Collision、KnockBack、HitStun）。所有匹配都在注释和字符串遮蔽后进行；计数按最内层可识别函数范围归属，无法归属的仍保留为 unscoped。
 
 这些标记只用于缩小人工审阅范围：命中 attack 不代表该方法就是可执行招式，命中 hitBox 不代表已取得碰撞框坐标，命中 damage 不代表伤害数值已确认。输出仍只含文件元数据、标识符/行号和计数，不含 ActionScript 正文、图片、音乐或音效。必须继续与原始 SWF 时间轴、实例层级及实际运行行为交叉验证后，才能写入角色动作和判定 JSON。
+
+
+补充：标记正则现覆盖带下划线或后缀的标识符（例如 combo_init、hit_check、attack_state），系统候选筛选也会检查完整脚本相对路径，因此能纳入嵌在 DefineSprite/PlaceObject 路径下的 HitCheck 脚本。仍然只输出词法候选计数，不提升为运行时语义结论。
