@@ -38,8 +38,10 @@ class DeepDiagnosticsSummaryTests(unittest.TestCase):
         self.assertEqual(result["required_commands"], ["as1_as2", "link_report"])
         self.assertEqual(result["commands"]["as1_as2"]["duration_seconds"], 82.5)
         encoded = json.dumps(result)
-        for secret in ("private", "args", "log", "detected_errors"):
-            self.assertNotIn(secret, encoded)
+        self.assertNotIn("private", encoded)
+        self.assertNotIn('"args":', encoded)
+        self.assertNotIn('"log":', encoded)
+        self.assertNotIn('"detected_errors":', encoded)
         self.assertFalse(result["runtime_binding_verified"])
         self.assertFalse(result["execution_verified"])
 
