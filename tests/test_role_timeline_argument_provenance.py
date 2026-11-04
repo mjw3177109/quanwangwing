@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,11 +12,11 @@ sys.path.insert(0, str(ROOT / "tools"))
 from build_role_timeline_argument_provenance import build_evidence
 from build_role_timeline_call_evidence import scan_calls
 
-
 SOURCE_SHA = "a" * 64
 SCRIPT_PATH = "scripts/__Packages/Kyo_role.as"
 
 
+@contextmanager
 def make_fixture(source: bytes):
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -75,19 +76,13 @@ def make_fixture(source: bytes):
             "timelines": [{"timeline": "sprite:123",
                            "frame_labels": [{"label": "idle"}]}],
         }
-        return root, export, crosswalk, calls, scopes, timeline, script
+        yield root, export, crosswalk, calls, scopes, timeline
 
 
 class RoleTimelineArgumentProvenanceTests(unittest.TestCase):
     def run_fixture(self, source):
-        root, export, crosswalk, calls, scopes, timeline, script = make_fixture(source)
-        try:
-            result = build_evidence(root, export, crosswalk, calls, scopes, timeline)
-            return result
-        finally:
-            # TemporaryDirectory is owned by make_fixture; keep its root alive until
-            # build_evidence has completed, then the caller only uses the JSON result.
-            pass
+        with make_fixture(source) as args:
+            return build_evidence(*args)
 
     def test_prior_string_assignment_matches_original_frame_label(self):
         source = (b"function update() {\n"
@@ -162,28 +157,28 @@ class RoleTimelineArgumentProvenanceTests(unittest.TestCase):
         self.assertNotIn(SCRIPT_PATH, serialized)
 
     def test_source_hash_and_script_hash_mismatches_fail_closed(self):
-        root, export, crosswalk, calls, scopes, timeline, script = make_fixture(
-            b"function update() { this.gotoAndStop(frameName); }\n")
-        export["source_sha256"] = "b" * 64
-        with self.assertRaisesRegex(ValueError, "SWF source SHA-256 mismatch"):
-            build_evidence(root, export, crosswalk, calls, scopes, timeline)
-        export["source_sha256"] = SOURCE_SHA
-        export["files"][0]["sha256"] = "c" * 64
-        with self.assertRaisesRegex(ValueError, "Role script hash/length mismatch"):
-            build_evidence(root, export, crosswalk, calls, scopes, timeline)
+        with make_fixture(b"function update() { this.gotoAndStop(frameName); }\n") as args:
+            root, export, crosswalk, calls, scopes, timeline = args
+            export["source_sha256"] = "b" * 64
+            with self.assertRaisesRegex(ValueError, "SWF source SHA-256 mismatch"):
+                build_evidence(root, export, crosswalk, calls, scopes, timeline)
+            export["source_sha256"] = SOURCE_SHA
+            export["files"][0]["sha256"] = "c" * 64
+            with self.assertRaisesRegex(ValueError, "Role script hash/length mismatch"):
+                build_evidence(root, export, crosswalk, calls, scopes, timeline)
 
     def test_duplicate_role_and_call_accounting_fail_closed(self):
-        root, export, crosswalk, calls, scopes, timeline, script = make_fixture(
-            b"function update() { this.gotoAndStop(frameName); }\n")
-        crosswalk["roles"].append(copy.deepcopy(crosswalk["roles"][0]))
-        crosswalk["role_variant_count"] = 2
-        with self.assertRaisesRegex(ValueError, "Duplicate or invalid role identity"):
-            build_evidence(root, export, crosswalk, calls, scopes, timeline)
-        root, export, crosswalk, calls, scopes, timeline, script = make_fixture(
-            b"function update() { this.gotoAndStop(frameName); }\n")
-        calls["call_candidate_count"] = 2
-        with self.assertRaisesRegex(ValueError, "Role call total accounting mismatch"):
-            build_evidence(root, export, crosswalk, calls, scopes, timeline)
+        with make_fixture(b"function update() { this.gotoAndStop(frameName); }\n") as args:
+            root, export, crosswalk, calls, scopes, timeline = args
+            crosswalk["roles"].append(copy.deepcopy(crosswalk["roles"][0]))
+            crosswalk["role_variant_count"] = 2
+            with self.assertRaisesRegex(ValueError, "Duplicate or invalid role identity"):
+                build_evidence(root, export, crosswalk, calls, scopes, timeline)
+        with make_fixture(b"function update() { this.gotoAndStop(frameName); }\n") as args:
+            root, export, crosswalk, calls, scopes, timeline = args
+            calls["call_candidate_count"] = 2
+            with self.assertRaisesRegex(ValueError, "Role call total accounting mismatch"):
+                build_evidence(root, export, crosswalk, calls, scopes, timeline)
 
 
 if __name__ == "__main__":
