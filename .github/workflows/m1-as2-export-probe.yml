@@ -712,8 +712,7 @@ jobs:
               raise SystemExit("Timeline FrameLabel assignment accounting mismatch")
           if not 0 <= d["calls_with_prior_frame_label_assignment_candidate_count"] <= d["dynamic_call_count"]:
               raise SystemExit("Timeline FrameLabel candidate call bound mismatch")
-          if any(e["runtime_binding_verified"] for e in d["events"]
-                 for e in [e] for _ in [0]):
+          if any(event["runtime_binding_verified"] for event in d["events"]):
               raise SystemExit("Unverified timeline runtime binding claimed")
           if any(r["runtime_binding_verified"] or any(a["runtime_binding_verified"] for a in r["prior_assignments"])
                  for e in d["events"] for r in e["identifier_references"]):
