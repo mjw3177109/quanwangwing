@@ -170,3 +170,40 @@ function resolveHit() {
             result = build_index(root, export, assets)
             self.assertEqual(result["candidate_script_count"], 1)
             self.assertEqual(result["candidate_scripts"][0]["marker_counts"]["collision"], 1)
+
+
+    def test_combat_markers_include_identifier_suffixes(self):
+        source = b'''// hit_check attack_state combo_init knock_back move_state
+var ignored = "hit_check attack_state combo_init knock_back move_state";
+function applyState() {
+  this.hit_check();
+  this.attack_state = 1;
+  this.combo_init();
+  this.knock_back();
+  this.move_state = 2;
+}
+'''
+        hints = inspect_source(source)
+        expected = {"hitbox": 1, "attack": 1, "combo": 1, "knockback": 1, "move_state": 1}
+        for marker, count in expected.items():
+            self.assertEqual(hints["marker_counts"][marker], count)
+            self.assertEqual(hints["function_scopes"][0]["marker_counts"][marker], count)
+
+    def test_system_name_candidates_include_nested_hitcheck_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rel = "scripts/DefineSprite_7052/frame_40/PlaceObject2_2635_HitCheck_mc_4/CLIPACTIONRECORD on(construct).as"
+            path = root / rel
+            path.parent.mkdir(parents=True)
+            raw = b"function check() { this.overlap(other); }"
+            path.write_bytes(raw)
+            export = {
+                "source_sha256": "b" * 64, "script_count": 1,
+                "unexpected_empty_count": 0,
+                "files": [{"path": rel, "size_bytes": len(raw),
+                           "sha256": hashlib.sha256(raw).hexdigest()}],
+            }
+            assets = {"source_sha256": "b" * 64, "character_class_candidates": []}
+            result = build_index(root, export, assets)
+            self.assertEqual(result["candidate_script_count"], 1)
+            self.assertEqual(result["candidate_scripts"][0]["marker_counts"]["collision"], 1)
