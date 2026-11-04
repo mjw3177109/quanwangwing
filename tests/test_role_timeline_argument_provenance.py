@@ -86,7 +86,7 @@ class RoleTimelineArgumentProvenanceTests(unittest.TestCase):
 
     def test_prior_string_assignment_matches_original_frame_label(self):
         source = (b"function update() {\n"
-                  b"  var frameName = \\"idle\\";\n"
+                  b"  var frameName = \"idle\";\n"
                   b"  this.gotoAndStop(frameName);\n"
                   b"}\n")
         result = self.run_fixture(source)
@@ -101,9 +101,9 @@ class RoleTimelineArgumentProvenanceTests(unittest.TestCase):
 
     def test_comments_and_string_contents_do_not_create_assignments(self):
         source = (b"function update() {\n"
-                  b"  // frameName = \\"wrong\\";\n"
-                  b"  var note = \\"frameName = fake\\";\n"
-                  b"  var frameName = \\"idle\\";\n"
+                  b"  // frameName = \"wrong\";\n"
+                  b"  var note = \"frameName = fake\";\n"
+                  b"  var frameName = \"idle\";\n"
                   b"  this.gotoAndStop(frameName);\n"
                   b"}\n")
         result = self.run_fixture(source)
@@ -112,7 +112,7 @@ class RoleTimelineArgumentProvenanceTests(unittest.TestCase):
         self.assertEqual(ref["prior_assignments"][0]["line"], 4)
 
     def test_assignment_outside_function_interval_is_not_joined(self):
-        source = (b"var frameName = \\"idle\\";\n"
+        source = (b"var frameName = \"idle\";\n"
                   b"function update() {\n"
                   b"  this.gotoAndStop(frameName);\n"
                   b"}\n")
@@ -123,8 +123,8 @@ class RoleTimelineArgumentProvenanceTests(unittest.TestCase):
 
     def test_concatenation_keeps_literal_and_identifier_evidence_separate(self):
         source = (b"function update() {\n"
-                  b"  var frameName = \\"idle\\";\n"
-                  b"  this.gotoAndStop(frameName + \\"_alt\\");\n"
+                  b"  var frameName = \"idle\";\n"
+                  b"  this.gotoAndStop(frameName + \"_alt\");\n"
                   b"}\n")
         result = self.run_fixture(source)
         event = result["events"][0]
@@ -146,7 +146,7 @@ class RoleTimelineArgumentProvenanceTests(unittest.TestCase):
 
     def test_plaintext_identifiers_and_labels_are_not_published(self):
         source = (b"function update(privateFrameName) {\n"
-                  b"  var privateLocal = \\"idle\\";\n"
+                  b"  var privateLocal = \"idle\";\n"
                   b"  this.gotoAndStop(privateFrameName + privateLocal);\n"
                   b"}\n")
         result = self.run_fixture(source)
