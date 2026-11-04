@@ -81,6 +81,7 @@
 - 25 个角色时间轴调用中，19 个是动态/未解析参数。新增分析确认这 19 个参数均为词法 `member_reference` 形态，各包含 1 个经过 SHA-256 处理的标识符引用。
 - 19/19 个标识符在各自唯一匹配的词法函数区间内，均找到一个调用前的 member-property 赋值候选；18/19 个赋值右侧的普通字符串字面量哈希与原始 SWF 的至少一个 FrameLabel 匹配，1/19 未匹配。匹配标签分布在 1–23 条候选时间轴中。
 - 这些结果把“动态参数未知”推进到了“局部赋值与 FrameLabel 候选已定位”，但不能证明赋值在运行时生效、属性未被覆盖、MovieClip 实例身份、实际跳转目标或播放帧。出现 23 条候选时间轴尤其说明不能随意挑一条当作原版目标。
+- 对含有这 19 个动态调用的 4 个角色变体，进一步将 role crosswalk、`role-reference-evidence` 与 `role-zero-frame-init-join` 按脚本 SHA-256 交叉核对：两份 DoInitAction 报告给出的 main timeline / frame 0 未压缩偏移一致，且与 ExportAssets characterId 对应。锚点分别为 K type2（characterId 8829，offset 773951）、Kyo base（4122，332167）、Ryo base（11497，930386）、Ryo type2（11505，977521）。这些是角色类初始化入口锚点，不是 goto 调用本身的 SWF 偏移，也不是可见 Sprite 的实际放置或动态跳转目标；四者直接 PlaceObject 计数仍为 0。
 - Artifact #13359222646 含 29 个 JSON 文件；无 `.as` 源码、SWF、图片、音乐或音效。标识符、标签值与脚本路径均未以明文写入该新增报告；所有 runtime binding / execution 标志保持 false。
 
 ## 当前已知限制
