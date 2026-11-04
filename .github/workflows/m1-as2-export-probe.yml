@@ -47,6 +47,9 @@ jobs:
       - name: Test role timeline argument provenance parser
         run: python3 -m unittest discover -s tests -p 'test_role_timeline_argument_provenance.py' -v
 
+      - name: Test dynamic attach function return-shape evidence
+        run: python3 -m unittest discover -s tests -p 'test_dynamic_attach_return_evidence.py' -v
+
       - name: Export ActionScript with bounded retry for partial FFDec output
         run: |
           for attempt in 1 2 3; do
@@ -973,6 +976,45 @@ jobs:
               raise SystemExit("Unverified function binding claim")
           PY
 
+      - name: Audit dynamic attach function return-expression shapes (metadata only)
+        run: |
+          python3 tools/build_dynamic_attach_return_evidence.py \
+            --scripts build/as2-probe/exports/scripts \
+            --export-index build/as2-probe/script-export-index.json \
+            --assignments build/as2-probe/dynamic-attach-assignment-sites.json \
+            --references build/as2-probe/attach-identifier-references.json \
+            --function-join build/as2-probe/dynamic-attach-function-body-join.json \
+            --output build/as2-probe/dynamic-attach-return-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("build/as2-probe")
+          d = json.loads((p / "dynamic-attach-return-evidence.json").read_text(encoding="utf-8"))
+          j = json.loads((p / "dynamic-attach-function-body-join.json").read_text(encoding="utf-8"))
+          a = json.loads((p / "dynamic-attach-assignment-sites.json").read_text(encoding="utf-8"))
+          if d["source_sha256"] != j["source_sha256"] or d["source_sha256"] != a["source_sha256"]:
+              raise SystemExit("Return evidence SWF provenance mismatch")
+          if d["function_assignment_count"] != j["function_assignment_candidate_count"]:
+              raise SystemExit("Return evidence function assignment coverage mismatch")
+          if d["function_assignment_count"] != a["rhs_class_counts"].get("function_expression_candidate", 0):
+              raise SystemExit("Return evidence source assignment coverage mismatch")
+          if d["checked_source_file_count"] != d["function_assignment_count"]:
+              raise SystemExit("Return evidence checked-file accounting mismatch")
+          if sum(d["parse_status_counts"].values()) != d["function_assignment_count"]:
+              raise SystemExit("Return evidence parse-status accounting mismatch")
+          if sum(d["return_kind_counts"].values()) != d["return_count_total"]:
+              raise SystemExit("Return evidence return-kind accounting mismatch")
+          if d["runtime_binding_verified"] or d["execution_verified"]:
+              raise SystemExit("Unverified runtime return behavior was promoted")
+          if any(s["runtime_binding_verified"] or s["execution_verified"] for s in d["sites"]):
+              raise SystemExit("Unverified function execution was promoted")
+          if any(r["runtime_binding_verified"] or r["execution_verified"]
+                 for s in d["sites"] for r in s["returns"]):
+              raise SystemExit("Unverified return execution was promoted")
+          if "scripts/" in json.dumps(d):
+              raise SystemExit("Private AS2 paths leaked into metadata")
+          PY
+
       - name: Report bounded error metadata only
         if: always()
         run: |
@@ -1025,6 +1067,7 @@ jobs:
             build/as2-probe/dynamic-attach-scope-pairs.json
             build/as2-probe/dynamic-attach-assignment-sites.json
             build/as2-probe/dynamic-attach-function-body-join.json
+            build/as2-probe/dynamic-attach-return-evidence.json
             build/as2-probe/role-timeline-argument-provenance.json
           if-no-files-found: warn
           retention-days: 7
