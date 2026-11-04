@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import re
 
-SHA = re.compile(r"[0-9a-f]{64}\\Z")
+SHA = re.compile(r"[0-9a-f]{64}\Z")
 REQUIRED_BASE = ("as1_as2", "link_report")
 
 
@@ -105,13 +105,13 @@ def main() -> int:
             "deep_diagnostics_complete": False,
             "runtime_binding_verified": False,
             "execution_verified": False,
-        }, indent=2) + "\\n", encoding="utf-8")
+        }, indent=2) + "\n", encoding="utf-8")
         print("Deep diagnostics summary is missing")
         return 1
     data = json.loads(args.summary.read_text(encoding="utf-8"))
     result = summarize(data)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({
         "status": result["status"],
         "required_commands": result["required_commands"],
