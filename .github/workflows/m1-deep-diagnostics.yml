@@ -42,11 +42,11 @@ jobs:
           (
             while kill -0 "$probe_pid" 2>/dev/null; do
               # Aggregate Java process statistics only; never print argv or source.
-              ps -eo comm=,pcpu=,rss= | awk '$1=="java" {n++; cpu+=$2; rss+=$3} END {printf "[FFDEC-PROBE] java_processes=%d cpu_percent_sum=%.1f rss_kib_sum=%.0f\\n", n, cpu, rss}'
+              ps -eo comm=,pcpu=,rss= | awk '$1=="java" {n++; cpu+=$2; rss+=$3} END {printf "[FFDEC-PROBE] java_processes=%d cpu_percent_sum=%.1f rss_kib_sum=%.0f\n", n, cpu, rss}'
               for name in as1_as2 link_report; do
                 file="build/deep-probe/${name}.log"
                 if [ -f "$file" ]; then
-                  printf '[FFDEC-PROBE] %s_log_bytes=%s\\n' "$name" "$(stat -c %s "$file")"
+                  printf '[FFDEC-PROBE] %s_log_bytes=%s\n' "$name" "$(stat -c %s "$file")"
                 fi
               done
               sleep 15
