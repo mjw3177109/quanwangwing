@@ -34,7 +34,32 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_summarize_deep_diagnostics.py' -v
 
       - name: Run bounded AS1/AS2/AS3 and link-report diagnostics
-        run: python3 tools/analyze_swf.py --phase deep --timeout 180 --output build/deep-probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/analyze_swf.py --phase deep --timeout 180 --output build/deep-probe &
+          probe_pid=$!
+          (
+            while kill -0 "$probe_pid" 2>/dev/null; do
+              # Aggregate Java process statistics only; never print argv or source.
+              ps -eo comm=,pcpu=,rss= | awk '$1=="java" {n++; cpu+=$2; rss+=$3} END {printf "[FFDEC-PROBE] java_processes=%d cpu_percent_sum=%.1f rss_kib_sum=%.0f\\n", n, cpu, rss}'
+              for name in as1_as2 link_report; do
+                file="build/deep-probe/${name}.log"
+                if [ -f "$file" ]; then
+                  printf '[FFDEC-PROBE] %s_log_bytes=%s\\n' "$name" "$(stat -c %s "$file")"
+                fi
+              done
+              sleep 15
+            done
+          ) &
+          monitor_pid=$!
+          set +e
+          wait "$probe_pid"
+          probe_status=$?
+          set -e
+          kill "$monitor_pid" 2>/dev/null || true
+          wait "$monitor_pid" 2>/dev/null || true
+          exit "$probe_status"
 
       - name: Summarize command outcomes without source or report contents
         if: always()
