@@ -43,6 +43,23 @@ jobs:
             while kill -0 "$probe_pid" 2>/dev/null; do
               # Aggregate Java process statistics only; never print argv or source.
               ps -eo comm=,pcpu=,rss= | awk '$1=="java" {n++; cpu+=$2; rss+=$3} END {printf "[FFDEC-PROBE] java_processes=%d cpu_percent_sum=%.1f rss_kib_sum=%.0f\n", n, cpu, rss}'
+              # Sample JVM thread STATES only; never emit raw stack traces, names or arguments.
+              # A bounded jstack avoids hanging the monitoring loop if JVM attach stalls.
+              java_pid="$(ps -eo pid=,comm= | awk '$2=="java" {print $1; exit}')"
+              if [ -n "$java_pid" ] && command -v jstack >/dev/null 2>&1; then
+                thread_dump="$(mktemp)"
+                if timeout 5s jstack "$java_pid" >"$thread_dump" 2>/dev/null; then
+                  awk '/java.lang.Thread.State:/ {states[$2]++} END {
+                    printf "[FFDEC-THREADS] runnable=%d waiting=%d timed_waiting=%d blocked=%d total=%d\\n",
+                      states["RUNNABLE"]+0, states["WAITING"]+0,
+                      states["TIMED_WAITING"]+0, states["BLOCKED"]+0,
+                      states["RUNNABLE"]+states["WAITING"]+states["TIMED_WAITING"]+states["BLOCKED"]
+                  }' "$thread_dump"
+                else
+                  echo '[FFDEC-THREADS] sampling_unavailable'
+                fi
+                rm -f "$thread_dump"
+              fi
               for name in as1_as2 link_report; do
                 file="build/deep-probe/${name}.log"
                 if [ -f "$file" ]; then
