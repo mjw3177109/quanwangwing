@@ -50,7 +50,7 @@ jobs:
                 thread_dump="$(mktemp)"
                 if timeout 5s jstack "$java_pid" >"$thread_dump" 2>/dev/null; then
                   awk '/java.lang.Thread.State:/ {states[$2]++} END {
-                    printf "[FFDEC-THREADS] runnable=%d waiting=%d timed_waiting=%d blocked=%d total=%d\\n",
+                    printf "[FFDEC-THREADS] runnable=%d waiting=%d timed_waiting=%d blocked=%d total=%d\n",
                       states["RUNNABLE"]+0, states["WAITING"]+0,
                       states["TIMED_WAITING"]+0, states["BLOCKED"]+0,
                       states["RUNNABLE"]+states["WAITING"]+states["TIMED_WAITING"]+states["BLOCKED"]
