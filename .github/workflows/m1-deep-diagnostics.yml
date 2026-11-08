@@ -62,7 +62,7 @@ jobs:
                 # Track aggregate process CPU growth to distinguish active work from stalls.
                 stack_fingerprint="$(awk '/^[[:space:]]+at / {print $1, $2}' "$thread_dump" | sha256sum | cut -c1-16)"
                 thread_cpu="$(ps -p "$java_pid" -o time= | awk -F: '{if (NF==3) print ($1*3600+$2*60+$3); else if (NF==2) print ($1*60+$2); else print 0}')"
-                printf '[FFDEC-THREAD-FINGERPRINT] hash=%s cpu_seconds=%s\\n' "$stack_fingerprint" "$thread_cpu"
+                printf '[FFDEC-THREAD-FINGERPRINT] hash=%s cpu_seconds=%s\n' "$stack_fingerprint" "$thread_cpu"
                 rm -f "$thread_dump"
               fi
               for name in as1_as2 link_report; do
