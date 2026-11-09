@@ -43,9 +43,10 @@ jobs:
             while kill -0 "$probe_pid" 2>/dev/null; do
               # Aggregate Java process statistics only; never print argv or source.
               ps -eo comm=,pcpu=,rss= | awk '$1=="java" {n++; cpu+=$2; rss+=$3} END {printf "[FFDEC-PROBE] java_processes=%d cpu_percent_sum=%.1f rss_kib_sum=%.0f\n", n, cpu, rss}'
+              # Track only the Java child of this probe; unrelated JVMs must not be sampled.
               # Sample JVM thread STATES only; never emit raw stack traces, names or arguments.
               # A bounded jstack avoids hanging the monitoring loop if JVM attach stalls.
-              java_pid="$(ps -eo pid=,comm= | awk '$2=="java" {print $1; exit}')"
+              java_pid="$(ps -eo pid=,ppid=,comm= | awk -v parent="$probe_pid" '$2==parent && $3=="java" {print $1; exit}')"
               if [ -n "$java_pid" ] && command -v jstack >/dev/null 2>&1; then
                 thread_dump="$(mktemp)"
                 if timeout 5s jstack "$java_pid" >"$thread_dump" 2>/dev/null; then
